@@ -1,0 +1,21 @@
+# Build
+build/
+out/
+
+# Gradle
+.gradle/
+.gradle
+.gradletasknamecache
+gradlew.bat
+gradlew
+gradle
+
+# IDE
+*.iml
+.idea/
+
+# OS
+.DS_Store
+
+generated
+
