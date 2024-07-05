@@ -1,14 +1,14 @@
 package com.flower.flows;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import com.flower.conf.FlowExec;
 import com.flower.conf.FlowFuture;
 import com.flower.engine.Flower;
 import com.helium.ingestor.config.Config;
+import com.helium.ingestor.core.LogHeliumEventNotifier;
 import com.helium.ingestor.flows.CameraProcessRunnerFlow;
 import com.helium.ingestor.flows.MainIngestorFlow;
 
@@ -23,33 +23,25 @@ public class MainIngestorFlowTest {
 
         FlowExec<MainIngestorFlow> flowExec = flower.getFlowExec(MainIngestorFlow.class);
 
-        ObjectMapper mapper = new ObjectMapper()
-                .configure(JsonGenerator.Feature.IGNORE_UNKNOWN, true)
-                .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
                 .registerModule(new GuavaModule());
-        Config config = mapper.readValue(
-                "{\n" +
-                        "\t\"videoFeedFolder\": \"/home/john/cam\",\n" +
-                        "\t\"cameras\": [\n" +
-                        "\t\t{\n" +
-                        "\t\t\t\"name\": \"camera_20\",\n" +
-                        "\t\t\t\"hostname\": \"192.168.1.20\",\n" +
-                        "\t\t\t\"type\": \"REOLINK\",\n" +
-                        "\t\t\t\"credentials\": {\n" +
-                        "\t\t\t\t\"username\": \"admin\",\n" +
-                        "\t\t\t\t\"password\": \"1111111\"\n" +
-                        "\t\t\t}\n" +
-                        "\t\t}\n" +
-                        "\t]\n" +
-                        "\t\n" +
-                        "}",
-                Config.class);
+
+        String configStr = "videoFeedFolder: \"/home/john/cam\"\n" +
+                            "cameras:\n" +
+                            "  - name: \"camera_20\"\n" +
+                            "    hostname: \"192.168.1.20\"\n" +
+                            "    type: \"REOLINK\"\n" +
+                            "    credentials:\n" +
+                            "      username: \"admin\"\n" +
+                            "      password: \"1111111\"\n";
+        System.out.println(configStr);
+        Config config = mapper.readValue(configStr, Config.class);
 
         if (config.cameras() == null || config.cameras().isEmpty()) {
             throw new IllegalArgumentException("Cameras not set");
         }
 
-        MainIngestorFlow testFlow = new MainIngestorFlow(config);
+        MainIngestorFlow testFlow = new MainIngestorFlow(config, new LogHeliumEventNotifier());
         FlowFuture<MainIngestorFlow> flowFuture = flowExec.runFlow(testFlow);
         System.out.println("Flow created. Id: " + flowFuture.getFlowId());
 

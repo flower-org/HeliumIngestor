@@ -1,5 +1,6 @@
 package com.helium.ingestor.flows;
 
+import com.flower.anno.event.EventProfiles;
 import com.flower.anno.flow.FlowType;
 import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
@@ -13,7 +14,8 @@ import com.flower.conf.OutPrm;
 import com.flower.conf.ReturnValueOrException;
 import com.flower.conf.Transition;
 import com.google.common.base.Strings;
-import com.helium.ingestor.core.EventNotifier;
+import com.helium.ingestor.core.HeliumEventNotifier;
+import com.helium.ingestor.core.HeliumEventType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +26,7 @@ import java.io.InputStreamReader;
 import java.time.Duration;
 
 @FlowType(firstStep = "LAUNCH_PROCESS")
+@EventProfiles({FlowTerminationEvents.class})
 public class CameraProcessRunnerFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(CameraProcessRunnerFlow.class);
 
@@ -46,7 +49,7 @@ public class CameraProcessRunnerFlow {
 
     @State final String cameraName;
     @State final String command;
-    @State final EventNotifier eventNotifier;
+    @State final HeliumEventNotifier heliumEventNotifier;
     @State final StringBuilder lastLogLines;
     @State final int maxLogBufferSize;
     @State final RetryInfo retryInfo;
@@ -55,14 +58,14 @@ public class CameraProcessRunnerFlow {
     @State @Nullable BufferedReader stdout;
     @State @Nullable BufferedReader stderr;
 
-    public CameraProcessRunnerFlow(String cameraName, String command, EventNotifier eventNotifier) {
-        this(cameraName, command, eventNotifier, 36);
+    public CameraProcessRunnerFlow(String cameraName, String command, HeliumEventNotifier heliumEventNotifier) {
+        this(cameraName, command, heliumEventNotifier, 36);
     }
 
-    public CameraProcessRunnerFlow(String cameraName, String command, EventNotifier eventNotifier, int maxLogBufferSize) {
+    public CameraProcessRunnerFlow(String cameraName, String command, HeliumEventNotifier heliumEventNotifier, int maxLogBufferSize) {
         this.cameraName = cameraName;
         this.command = command;
-        this.eventNotifier = eventNotifier;
+        this.heliumEventNotifier = heliumEventNotifier;
         this.retryInfo = new RetryInfo(0);
         this.lastLogLines = new StringBuilder();
         this.maxLogBufferSize = maxLogBufferSize;
@@ -111,7 +114,7 @@ public class CameraProcessRunnerFlow {
             @In int maxLogBufferSize,
             @In(throwIfNull = true) BufferedReader stdout,
             @In(throwIfNull = true) BufferedReader stderr,
-            @In EventNotifier eventNotifier,
+            @In HeliumEventNotifier heliumEventNotifier,
             @StepRef Transition CHECK_PROCESS_STATE
     ) throws IOException {
         int charsRead = readFromStream(stdout, "STDOUT: ", lastLogLines, maxLogBufferSize);
@@ -128,13 +131,16 @@ public class CameraProcessRunnerFlow {
                 if (retryInfo.lastOutputReadTime + Duration.ofSeconds(MISSING_OUTPUT_TIMEOUT_SECONDS).toMillis() < now) {
                     //Then Forcibly kill process
                     LOGGER.warn("Killing process forcibly");
-                    eventNotifier.notifyEvent(EventNotifier.EventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName, "Killing process forcibly", lastLogLines.toString());
+                    heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName,
+                            "Killing process forcibly due to absence of output", lastLogLines.toString());
 
                     process.destroyForcibly();
 
                     return CHECK_PROCESS_STATE.setDelay(Duration.ofMillis(100L));
                 }
             }
+            //NB: An alternative way of detecting output timeout would be to rely on detection creation of new files,
+            // but it's more cumbersome and hard to implement.
         }
 
         return CHECK_PROCESS_STATE;
@@ -145,7 +151,7 @@ public class CameraProcessRunnerFlow {
             @In(throwIfNull = true) Process process,
             @In String cameraName,
             @In RetryInfo retryInfo,
-            @In EventNotifier eventNotifier,
+            @In HeliumEventNotifier heliumEventNotifier,
             @In StringBuilder lastLogLines,
             @StepRef Transition READ_PROCESS_OUTPUT,
             @StepRef Transition LAUNCH_PROCESS
@@ -167,7 +173,7 @@ public class CameraProcessRunnerFlow {
                     process.exitValue(), cameraName, retryInfo.failedLaunchRetries, delayDuration);
             LOGGER.error(processTerminationSummary);
 
-            eventNotifier.notifyEvent(EventNotifier.EventType.CAMERA_PROCESS_TERMINATED,
+            heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_TERMINATED,
                     cameraName, processTerminationSummary, lastLogLines.toString());
 
             return LAUNCH_PROCESS.setDelay(delayDuration);

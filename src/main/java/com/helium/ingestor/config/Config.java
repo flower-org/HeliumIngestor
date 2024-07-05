@@ -1,6 +1,7 @@
 package com.helium.ingestor.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.immutables.value.Value;
@@ -24,24 +25,33 @@ public interface Config {
         @JsonDeserialize(as = ImmutableCredentials.class)
         @JsonInclude(JsonInclude.Include.NON_NULL)
         interface Credentials {
+            @JsonProperty
             String username();
+            @JsonProperty
             String password();
         }
 
+        @JsonProperty
         String name();
+        @JsonProperty
         String hostname();
         @Value.Default
+        @JsonProperty
         default CameraType type() { return CameraType.DEFAULT; }
 
+        @JsonProperty
         Credentials credentials();
     }
 
+    @JsonProperty
     String videoFeedFolder();
+    @JsonProperty
     List<Camera> cameras();
 
     /** ffmpeg's -timeout parameter (socket timeout in microseconds)
      * Default 1 second (1000000 us)*/
     @Value.Default
+    @JsonProperty
     default Long socketTimeout_us() { return 1000000L; }
 }
 

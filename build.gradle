@@ -1,10 +1,11 @@
 plugins {
     id 'application'
     id "net.ltgt.errorprone" version "3.0.1"
+    id "com.github.johnrengelman.shadow" version "7.1.2"
 }
 
 application {
-    mainClass = 'com.helium.ingestor.IngestorService'
+    mainClass = 'com.helium.ingestor.Main'
 }
 
 compileJava {
@@ -18,6 +19,9 @@ sourceSets {
     main { java { srcDir 'src/main' } }
     test { java { srcDir 'src/test' } }
 }
+
+sourceCompatibility = '17'
+targetCompatibility = '17'
 
 repositories {
     mavenCentral()
@@ -33,6 +37,7 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.12.0'
     implementation 'com.google.guava:guava-testlib:31.1-jre'
 
+    implementation 'commons-cli:commons-cli:1.5.0'
     implementation 'org.apache.logging.log4j:log4j-api:2.20.0'
     implementation 'org.apache.logging.log4j:log4j-core:2.20.0'
     implementation 'org.apache.logging.log4j:log4j-slf4j-impl:2.20.0'
@@ -63,7 +68,7 @@ import net.ltgt.gradle.errorprone.CheckSeverity
 
 tasks.withType(JavaCompile) {
     // remove the if condition if you want to run NullAway on test code
-    if (!name.toLowerCase().contains("test")) {
+    if (!name.toLowerCase().contains("test") && !name.toLowerCase().contains("build")) {
         options.errorprone {
             check("NullAway", CheckSeverity.ERROR)
             excludedPaths.set("$buildDir/generated/sources/.*")
@@ -76,8 +81,10 @@ tasks.withType(JavaCompile) {
     }
 }
 
+shadowJar { manifest { attributes 'Main-Class': 'com.helium.ingestor.Main' } }
+
 jar {
     manifest {
-        attributes 'Main-Class': 'com.helium.ingestor.HelloWorldFlow'
+        attributes 'Main-Class': 'com.helium.ingestor.Main'
     }
 }

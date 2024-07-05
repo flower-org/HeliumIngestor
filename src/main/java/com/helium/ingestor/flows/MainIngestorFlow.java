@@ -1,5 +1,6 @@
 package com.helium.ingestor.flows;
 
+import com.flower.anno.event.EventProfiles;
 import com.flower.anno.flow.FlowType;
 import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
@@ -16,8 +17,8 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import com.helium.ingestor.config.CameraType;
 import com.helium.ingestor.config.Config;
-import com.helium.ingestor.core.EventNotifier;
-import com.helium.ingestor.core.LogEventNotifier;
+import com.helium.ingestor.core.DatedFileHeliumEventNotifier;
+import com.helium.ingestor.core.HeliumEventNotifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 @FlowType(firstStep = "LOAD_CAMERAS_FROM_CONFIG")
+@EventProfiles({FlowTerminationEvents.class})
 public class MainIngestorFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(MainIngestorFlow.class);
 
@@ -44,13 +46,13 @@ public class MainIngestorFlow {
             " -reset_timestamps 1 -strftime 1 -f segment %s/%s/video_%%Y-%%m-%%d_%%H_%%M_%%S.mp4";
 
     @State final Config config;
-    @State final EventNotifier eventNotifier;
+    @State final HeliumEventNotifier heliumEventNotifier;
     /** This Map - < CameraName, FfmpegCommand > */
     @State final Map<String, String> cameraNameToCmdMap;
 
-    public MainIngestorFlow(Config config) {
+    public MainIngestorFlow(Config config, HeliumEventNotifier heliumEventNotifier1) {
         this.config = config;
-        this.eventNotifier = new LogEventNotifier();
+        this.heliumEventNotifier = heliumEventNotifier1;
         this.cameraNameToCmdMap = new HashMap<>();
     }
 
@@ -86,22 +88,31 @@ public class MainIngestorFlow {
 
     @SimpleStepFunction
     public static ListenableFuture<Transition> RUN_CHILD_FLOWS(
+            @In Config config,
             @In Map<String, String> cameraNameToCmdMap,
-            @In EventNotifier eventNotifier,
+            @In HeliumEventNotifier heliumEventNotifier,
             @FlowFactory(flowType = CameraProcessRunnerFlow.class)
-                FlowFactoryPrm<CameraProcessRunnerFlow> flowFactory,
+                FlowFactoryPrm<CameraProcessRunnerFlow> ffmpegFlowFactory,
+            @FlowFactory(flowType = VideoChunkManagerFlow.class)
+                FlowFactoryPrm<VideoChunkManagerFlow> videoChunkFlowFactory,
             @StepRef Transition FINALIZE) {
         //1. Camera feed persist flows
         List<FlowFuture<CameraProcessRunnerFlow>> ffmpegFlowFutures = new ArrayList<>();
         for (Map.Entry<String, String> cameraEntry : cameraNameToCmdMap.entrySet()) {
             String camera = cameraEntry.getKey();
             String ffmpegCommand = cameraEntry.getValue();
-            CameraProcessRunnerFlow ffmpegFlow = new CameraProcessRunnerFlow(camera, ffmpegCommand, eventNotifier);
-            ffmpegFlowFutures.add(flowFactory.runChildFlow(ffmpegFlow));
+            CameraProcessRunnerFlow ffmpegFlow = new CameraProcessRunnerFlow(camera, ffmpegCommand, heliumEventNotifier);
+            ffmpegFlowFutures.add(ffmpegFlowFactory.runChildFlow(ffmpegFlow));
         }
 
-        //2. Duration determiner / Feed analyzer / Stitcher / Continuity checker flow
-        //TODO: start child chunk manager flows
+        //2. Duration determiner / Feed analyzer / Merger / Continuity checker flow
+        List<FlowFuture<VideoChunkManagerFlow>> videoChunkManagerFutures = new ArrayList<>();
+        for (Map.Entry<String, String> cameraEntry : cameraNameToCmdMap.entrySet()) {
+            String camera = cameraEntry.getKey();
+            String ffmpegCommand = cameraEntry.getValue();
+            VideoChunkManagerFlow ffmpegFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera));
+            videoChunkManagerFutures.add(videoChunkFlowFactory.runChildFlow(ffmpegFlow));
+        }
 
         //3. Archiver Flow
         //TODO: start child archiver flows

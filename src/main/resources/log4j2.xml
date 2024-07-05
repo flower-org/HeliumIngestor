@@ -8,7 +8,7 @@
         <Console name="console" target="SYSTEM_OUT" follow="true">
             <PatternLayout pattern="${LOG_PATTERN}"/>
         </Console>
-        <RollingFile name="file" fileName="EnterpriseTool.log" filePattern="EnterpriseTool.%d{yyyy-MM-dd}.log"
+        <RollingFile name="file" fileName="HeliumIngestor.log" filePattern="HeliumIngestor.%d{yyyy-MM-dd}.log"
                      immediateFlush="true" append="true">
             <PatternLayout pattern="${LOG_PATTERN}"/>
             <Policies>
