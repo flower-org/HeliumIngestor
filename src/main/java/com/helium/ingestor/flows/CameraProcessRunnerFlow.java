@@ -90,6 +90,8 @@ public class CameraProcessRunnerFlow {
     @TransitFunction
     public static Transition LAUNCH_PROCESS_TRANSITION(
             @In RetryInfo retryInfo,
+            @In String cameraName,
+            @In HeliumEventNotifier heliumEventNotifier,
             @StepRef Transition LAUNCH_PROCESS,
             @StepRef Transition READ_PROCESS_OUTPUT,
             @InRetOrException ReturnValueOrException<Void> retValOrExc
@@ -101,6 +103,8 @@ public class CameraProcessRunnerFlow {
             LOGGER.error("Error starting process", retValOrExc.exception().get());
             return LAUNCH_PROCESS.setDelay(Duration.ofMillis(delay));
         } else {
+            heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_STARTED, cameraName,
+                    "Camera process started (ffmpeg)", null);
             return READ_PROCESS_OUTPUT;
         }
     }

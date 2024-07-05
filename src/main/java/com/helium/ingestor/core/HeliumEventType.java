@@ -1,6 +1,8 @@
 package com.helium.ingestor.core;
 
 public enum HeliumEventType {
+    /** Underlying ffmpeg process started */
+    CAMERA_PROCESS_STARTED,
     /** Underlying ffmpeg process exited */
     CAMERA_PROCESS_TERMINATED,
     /** Underlying ffmpeg process became unresponsive, killed by worker flow */

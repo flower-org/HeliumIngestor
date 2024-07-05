@@ -32,7 +32,7 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
     }
 
     public static String getEventMessageStr(HeliumEventType eventType, @Nullable String cameraName,
-                                            String eventTitle, String eventDetails) {
+                                            String eventTitle, @Nullable String eventDetails) {
         return String.format("Camera [%s]: [%s]. [%s]:\n\t%s",
                 cameraName, eventType, eventTitle, eventDetails);
     }
@@ -54,7 +54,7 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
     }
 
     @Override
-    public void notifyEvent(HeliumEventType eventType, @Nullable String cameraName, String eventTitle, String eventDetails) {
+    public void notifyEvent(HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
         String eventMessage = getEventMessageStr(eventType, cameraName, eventTitle, eventDetails);
         LOGGER.warn("!!!EVENT!!! {}", getEventMessageStr(eventType, cameraName, eventTitle, eventDetails));
         try {

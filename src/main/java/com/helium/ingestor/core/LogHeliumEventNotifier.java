@@ -12,7 +12,7 @@ public class LogHeliumEventNotifier implements HeliumEventNotifier {
     final static Logger LOGGER = LoggerFactory.getLogger(LogHeliumEventNotifier.class);
 
     @Override
-    public void notifyEvent(HeliumEventType eventType, @Nullable String cameraName, String eventTitle, String eventDetails) {
+    public void notifyEvent(HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
         LOGGER.warn("!!!EVENT!!! {}", getEventMessageStr(eventType, cameraName, eventTitle, eventDetails));
     }
 }
