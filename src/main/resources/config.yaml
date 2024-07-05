@@ -1,0 +1,8 @@
+videoFeedFolder: "/home/john/cam"
+cameras:
+  - name: "camera_20"
+    hostname: "192.168.1.20"
+    type: "REOLINK"
+    credentials:
+      username: "admin"
+      password: "1111111"
