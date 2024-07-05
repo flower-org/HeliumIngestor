@@ -1,6 +1,5 @@
 package com.helium.ingestor.flows;
 
-import com.flower.anno.event.EventProfiles;
 import com.flower.anno.flow.FlowType;
 import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
@@ -17,19 +16,16 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import com.helium.ingestor.config.CameraType;
 import com.helium.ingestor.config.Config;
-import com.helium.ingestor.core.DatedFileHeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventNotifier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @FlowType(firstStep = "LOAD_CAMERAS_FROM_CONFIG")
-@EventProfiles({FlowTerminationEvents.class})
 public class MainIngestorFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(MainIngestorFlow.class);
 

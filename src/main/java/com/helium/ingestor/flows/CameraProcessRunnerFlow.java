@@ -1,6 +1,5 @@
 package com.helium.ingestor.flows;
 
-import com.flower.anno.event.EventProfiles;
 import com.flower.anno.flow.FlowType;
 import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
@@ -16,17 +15,15 @@ import com.flower.conf.Transition;
 import com.google.common.base.Strings;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.Duration;
+import javax.annotation.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @FlowType(firstStep = "LAUNCH_PROCESS")
-@EventProfiles({FlowTerminationEvents.class})
 public class CameraProcessRunnerFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(CameraProcessRunnerFlow.class);
 
@@ -199,7 +196,7 @@ public class CameraProcessRunnerFlow {
                 newLogs.append((char)value);
                 charactersRead++;
             }
-            LOGGER.info(prefix + newLogs);
+            //LOGGER.info(prefix + newLogs);
 
             lastLogLines.append(newLogs);
             if (lastLogLines.length() > maxLogBufferSize) {

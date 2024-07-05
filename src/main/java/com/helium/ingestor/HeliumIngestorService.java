@@ -6,15 +6,11 @@ import com.flower.engine.Flower;
 import com.helium.ingestor.config.Config;
 import com.helium.ingestor.core.DatedFileHeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventNotifier;
-import com.helium.ingestor.flows.CameraProcessRunnerFlow;
-import com.helium.ingestor.flows.FlowTerminationEvents;
-import com.helium.ingestor.flows.MainIngestorFlow;
-import com.helium.ingestor.flows.VideoChunkManagerFlow;
-
+import com.helium.ingestor.flows.*;
 import java.io.File;
 import java.util.concurrent.ExecutionException;
 
-public class HeliumService {
+public class HeliumIngestorService {
     public static void run(Config config) throws ExecutionException, InterruptedException {
         if (config.cameras() == null || config.cameras().isEmpty()) {
             throw new IllegalArgumentException("Cameras not set");

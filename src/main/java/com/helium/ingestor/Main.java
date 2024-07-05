@@ -3,15 +3,16 @@ package com.helium.ingestor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
+import com.google.common.base.Charsets;
+import com.google.common.io.Resources;
 import com.helium.ingestor.config.Config;
+import java.io.File;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-
-import java.io.File;
 
 public class Main {
     static final String CONFIG_OPTION_NAME = "config";
@@ -30,13 +31,20 @@ public class Main {
             CommandLine line = parser.parse(options, args);
 
             if (line.hasOption(CONFIG_OPTION_NAME)) {
+                String configName = line.getOptionValue(CONFIG_OPTION_NAME);
                 ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
                         .registerModule(new GuavaModule());
 
-                File configFile = new File(line.getOptionValue(CONFIG_OPTION_NAME));
-                Config config = mapper.readValue(configFile, Config.class);
+                Config config;
+                File configFile = new File(configName);
+                if (configFile.exists()) {
+                    config = mapper.readValue(configFile, Config.class);
+                } else {
+                    String resourceStr = Resources.toString(Resources.getResource(configName), Charsets.UTF_8);
+                    config = mapper.readValue(resourceStr, Config.class);
+                }
 
-                HeliumService.run(config);
+                HeliumIngestorService.run(config);
             } else {
                 System.out.println("Please specify config name");
 

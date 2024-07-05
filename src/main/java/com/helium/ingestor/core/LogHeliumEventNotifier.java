@@ -1,11 +1,10 @@
 package com.helium.ingestor.core;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.helium.ingestor.core.DatedFileHeliumEventNotifier.getEventMessageStr;
 
 import javax.annotation.Nullable;
-
-import static com.helium.ingestor.core.DatedFileHeliumEventNotifier.getEventMessageStr;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Deprecated
 public class LogHeliumEventNotifier implements HeliumEventNotifier {

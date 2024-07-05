@@ -10,10 +10,9 @@ import com.flower.anno.params.events.FlowInfo;
 import com.flower.conf.FlowInfoPrm;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
-
-import javax.annotation.Nullable;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import javax.annotation.Nullable;
 
 /** Don't forget to call FlowTerminationEvents.setNOTIFIER(...) before use */
 @EventProfileContainer(name = "FlowTerminationEventProfile")

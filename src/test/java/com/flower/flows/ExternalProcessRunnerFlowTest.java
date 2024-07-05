@@ -5,7 +5,6 @@ import com.flower.conf.FlowFuture;
 import com.flower.engine.Flower;
 import com.helium.ingestor.core.LogHeliumEventNotifier;
 import com.helium.ingestor.flows.CameraProcessRunnerFlow;
-
 import java.util.concurrent.ExecutionException;
 
 public class ExternalProcessRunnerFlowTest {

@@ -11,7 +11,6 @@ import com.helium.ingestor.config.Config;
 import com.helium.ingestor.core.LogHeliumEventNotifier;
 import com.helium.ingestor.flows.CameraProcessRunnerFlow;
 import com.helium.ingestor.flows.MainIngestorFlow;
-
 import java.util.concurrent.ExecutionException;
 
 public class MainIngestorFlowTest {

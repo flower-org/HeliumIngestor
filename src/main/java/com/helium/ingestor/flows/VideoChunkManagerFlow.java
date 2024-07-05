@@ -1,6 +1,7 @@
 package com.helium.ingestor.flows;
 
-import com.flower.anno.event.EventProfiles;
+import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
+
 import com.flower.anno.flow.FlowType;
 import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
@@ -9,20 +10,20 @@ import com.flower.anno.params.common.Out;
 import com.flower.anno.params.transit.StepRef;
 import com.flower.conf.OutPrm;
 import com.flower.conf.Transition;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.util.List;
+import java.util.TreeMap;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.*;
-import java.util.List;
-import java.util.TreeMap;
-
-import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
-
 @FlowType(firstStep = "START_WATCHER")
-@EventProfiles({FlowTerminationEvents.class})
 public class VideoChunkManagerFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(VideoChunkManagerFlow.class);
     final static String ARCHIVE_FOLDER_NAME = "merged";
@@ -30,6 +31,7 @@ public class VideoChunkManagerFlow {
     enum ChunkState {
         DISCOVERED,
         DURATION_LOADED,
+        DURATION_LOAD_FAILED,
         MERGED,
         UNMERGEABLE
     }
@@ -105,6 +107,7 @@ public class VideoChunkManagerFlow {
                 WatchEvent<Path> ev = (WatchEvent<Path>)event;
                 File f = ev.context().toFile();
                 if (!chunkInfoTreeMap.containsKey(f)) {
+                    //LOGGER.info("Added f {} ", f.getAbsolutePath());
                     chunkInfoTreeMap.put(f, new ChunkInfo());
                 }
             }

@@ -10,8 +10,11 @@ import org.immutables.value.Value;
 @JsonDeserialize(as = ImmutableHeliumEvent.class)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 interface HeliumEvent {
-    HeliumEventType eventType();
-    String cameraName();
-    String eventTitle();
-    String eventDetails();
+  HeliumEventType eventType();
+
+  String cameraName();
+
+  String eventTitle();
+
+  String eventDetails();
 }
