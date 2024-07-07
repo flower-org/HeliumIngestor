@@ -28,14 +28,14 @@ public class FlowTerminationEvents {
                                @FlowException Throwable e,
                                @FlowInfo FlowInfoPrm flowInfoPrm) {
         String message = String.format("Flow crashed with exception! Flow: %s. Exception %s", flowInfoPrm, getStackTraceAsString(e));
-        NOTIFIER.notifyEvent(HeliumEventType.FLOW_DIED, null, "!!!FLOW DIED!!!", message);
+        NOTIFIER.notifyEvent(HeliumEventType.FLOW_EXCEPTION, null, "!!!FLOW DIED!!!", message);
     }
 
     @EventFunction(types = {EventType.AFTER_FLOW})
     static void AFTER_FLOW(@In(throwIfNull = true) HeliumEventNotifier NOTIFIER,
                            @FlowInfo FlowInfoPrm flowInfoPrm) {
         String message = String.format("Flow terminated normally. Flow: %s.", flowInfoPrm);
-        NOTIFIER.notifyEvent(HeliumEventType.FLOW_DIED, null, "!!!FLOW FINISHED!!!", message);
+        NOTIFIER.notifyEvent(HeliumEventType.FLOW_SHUTDOWN, null, "!!!FLOW FINISHED!!!", message);
     }
 
     public static String getStackTraceAsString(Throwable throwable) {

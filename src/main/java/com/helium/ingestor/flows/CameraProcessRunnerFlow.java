@@ -185,24 +185,29 @@ public class CameraProcessRunnerFlow {
 
     // -----------------------------------------------------------
 
-    static int readFromStream(BufferedReader reader, @Nullable String prefix, StringBuilder lastLogLines, int maxLogBufferSize) throws IOException {
-        int charactersRead = 0;
-        if (reader.ready()) {
-            prefix = Strings.nullToEmpty(prefix);
+    public static String readString(BufferedReader reader) throws IOException {
+        StringBuilder newLogs = new StringBuilder();
+        int value;
+        while (reader.ready() && (value = reader.read()) != -1) {
+            newLogs.append((char)value);
+        }
+        return newLogs.toString();
+    }
 
-            StringBuilder newLogs = new StringBuilder();
-            int value;
-            while (reader.ready() && (value = reader.read()) != -1) {
-                newLogs.append((char)value);
-                charactersRead++;
-            }
-            //LOGGER.info(prefix + newLogs);
+    static int readFromStream(BufferedReader reader, @Nullable String prefix, StringBuilder lastLogLines,
+                              @Nullable Integer maxLogBufferSize) throws IOException {
+        if (reader.ready()) {
+            String newLogs = readString(reader);
+            LOGGER.debug("{}{}", Strings.nullToEmpty(prefix), newLogs);
 
             lastLogLines.append(newLogs);
-            if (lastLogLines.length() > maxLogBufferSize) {
-                lastLogLines.delete(0, lastLogLines.length() - maxLogBufferSize);
+            if (maxLogBufferSize != null) {
+                if (lastLogLines.length() > maxLogBufferSize) {
+                    lastLogLines.delete(0, lastLogLines.length() - maxLogBufferSize);
+                }
             }
+            return newLogs.length();
         }
-        return charactersRead;
+        return 0;
     }
 }

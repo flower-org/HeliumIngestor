@@ -106,7 +106,7 @@ public class MainIngestorFlow {
         for (Map.Entry<String, String> cameraEntry : cameraNameToCmdMap.entrySet()) {
             String camera = cameraEntry.getKey();
             String ffmpegCommand = cameraEntry.getValue();
-            VideoChunkManagerFlow ffmpegFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera));
+            VideoChunkManagerFlow ffmpegFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera), camera, heliumEventNotifier);
             videoChunkManagerFutures.add(videoChunkFlowFactory.runChildFlow(ffmpegFlow));
         }
 

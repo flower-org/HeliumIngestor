@@ -11,6 +11,8 @@ public enum HeliumEventType {
   VIDEO_CHUNK_NOT_READABLE,
   /** Time gap discovered in video footage (e.g. at merging stage) */
   GAP_IN_FOOTAGE,
+  /** Video footage for a period is longer than a given period. (hypothetical) */
+  REDUNDANT_DUPLICATE_FOOTAGE,
   /** Attempt to merge video chunks failed */
   // TODO: what do? delete chunks? mark as unmergeable?
   VIDEO_MERGING_FAILED,
@@ -24,7 +26,9 @@ public enum HeliumEventType {
   ANALYSIS_RESULTS,
   /** Frame analyzed, list of changes in detected objects since last detection */
   ANALYSIS_RESULTS_DIFF,
-  /** One of the Flower worker flows died (e.g.: CameraProcessRunnerFlow, VideoChunkManagerFlow,
+  /** One of the Flower worker flows failed with Exception (e.g.: CameraProcessRunnerFlow, VideoChunkManagerFlow,
    * etc.) */
-  FLOW_DIED
+  FLOW_EXCEPTION,
+  /** One of the Flower worker flows shuts down normally */
+  FLOW_SHUTDOWN
 }

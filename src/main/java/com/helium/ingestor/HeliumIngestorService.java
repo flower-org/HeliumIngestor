@@ -23,6 +23,7 @@ public class HeliumIngestorService {
         flower.registerFlow(MainIngestorFlow.class);
         flower.registerFlow(CameraProcessRunnerFlow.class);
         flower.registerFlow(VideoChunkManagerFlow.class);
+        flower.registerFlow(LoadChunkDurationFlow.class);
 
         flower.registerEventProfile(FlowTerminationEvents.class, true);
         FlowTerminationEvents.setNOTIFIER(heliumEventNotifier);

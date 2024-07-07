@@ -8,7 +8,6 @@ import com.flower.conf.FlowExec;
 import com.flower.conf.FlowFuture;
 import com.flower.engine.Flower;
 import com.helium.ingestor.config.Config;
-import com.helium.ingestor.core.LogHeliumEventNotifier;
 import com.helium.ingestor.flows.CameraProcessRunnerFlow;
 import com.helium.ingestor.flows.MainIngestorFlow;
 import java.util.concurrent.ExecutionException;
@@ -40,7 +39,7 @@ public class MainIngestorFlowTest {
             throw new IllegalArgumentException("Cameras not set");
         }
 
-        MainIngestorFlow testFlow = new MainIngestorFlow(config, new LogHeliumEventNotifier());
+        MainIngestorFlow testFlow = new MainIngestorFlow(config, new TestLogHeliumEventNotifier());
         FlowFuture<MainIngestorFlow> flowFuture = flowExec.runFlow(testFlow);
         System.out.println("Flow created. Id: " + flowFuture.getFlowId());
 

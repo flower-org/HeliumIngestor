@@ -7,7 +7,10 @@ import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
 import com.flower.anno.params.common.In;
 import com.flower.anno.params.common.Out;
+import com.flower.anno.params.step.FlowFactory;
 import com.flower.anno.params.transit.StepRef;
+import com.flower.conf.FlowFactoryPrm;
+import com.flower.conf.FlowFuture;
 import com.flower.conf.OutPrm;
 import com.flower.conf.Transition;
 import java.io.File;
@@ -17,9 +20,17 @@ import java.nio.file.Path;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
 import javax.annotation.Nullable;
+
+import com.flower.utilities.FuturesTool;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.helium.ingestor.core.HeliumEventNotifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,19 +47,28 @@ public class VideoChunkManagerFlow {
         UNMERGEABLE
     }
 
-    static class ChunkInfo {
+    public static class ChunkInfo {
         ChunkState chunkState = ChunkState.DISCOVERED;
-        double chunkDuration = -1;
+        @Nullable Double chunkDuration = null;
+        @Nullable Exception durationLoadException = null;
     }
 
+    @State final String cameraName;
+    @State final HeliumEventNotifier heliumEventNotifier;
     @State @Nullable WatchService watcher;
     @State final File directoryFile;
+    //TODO: filepath instead of path?
     @State final TreeMap<File, ChunkInfo> chunkInfoTreeMap;
+    @State final TreeMap<File, ChunkInfo> mergedChunkInfoTreeMap;
     @State @Nullable File archiveDirectoryFile;
 
-    public VideoChunkManagerFlow(File directoryFile) {
+    public VideoChunkManagerFlow(File directoryFile, String cameraName, HeliumEventNotifier heliumEventNotifier) {
         this.directoryFile = directoryFile;
         chunkInfoTreeMap = new TreeMap<>();
+        mergedChunkInfoTreeMap = new TreeMap<>();
+
+        this.cameraName = cameraName;
+        this.heliumEventNotifier = heliumEventNotifier;
     }
 
     @SimpleStepFunction
@@ -81,7 +101,7 @@ public class VideoChunkManagerFlow {
     @SimpleStepFunction
     public static Transition INITIAL_DIRECTORY_LOAD(@In File directoryFile,
                                                     @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
-                                                    @StepRef Transition GET_NEW_FILES_FROM_WATCHER) {
+                                                    @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
         File[] files = directoryFile.listFiles(File::isFile);
         if (files != null) {
             for (File f : files) {
@@ -91,14 +111,14 @@ public class VideoChunkManagerFlow {
             }
         }
 
-        return GET_NEW_FILES_FROM_WATCHER;
+        return ADD_NEW_FILES_FROM_WATCHER_TO_TREE;
     }
 
     @SimpleStepFunction
-    public static Transition GET_NEW_FILES_FROM_WATCHER(@In File directoryFile,
-                                                        @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
-                                                        @In WatchService watcher,
-                                                        @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES) {
+    public static Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE(@In File directoryFile,
+                                                                @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
+                                                                @In WatchService watcher,
+                                                                @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES) {
         WatchKey watchKey = watcher.poll();
         if (watchKey != null) {
             List<WatchEvent<?>> events = watchKey.pollEvents();
@@ -107,7 +127,9 @@ public class VideoChunkManagerFlow {
                 WatchEvent<Path> ev = (WatchEvent<Path>)event;
                 File f = ev.context().toFile();
                 if (!chunkInfoTreeMap.containsKey(f)) {
-                    //LOGGER.info("Added f {} ", f.getAbsolutePath());
+                    //For some reason here I'm getting file with the correct filename but incorrect parent directory
+                    // so f.getAbsolutePath() returns non-existent path. The line below is to fix that.
+                    f = new File(directoryFile, f.getName());
                     chunkInfoTreeMap.put(f, new ChunkInfo());
                 }
             }
@@ -117,19 +139,56 @@ public class VideoChunkManagerFlow {
     }
 
     @SimpleStepFunction
-    public static Transition LOAD_DURATIONS_FROM_CHUNK_FILES(@In File directoryFile,
-                                                             @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
-                                                             @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS) {
-        //TODO: don't try to load last chunk's time bc it's in progress
+    public static ListenableFuture<Transition> LOAD_DURATIONS_FROM_CHUNK_FILES(
+            @In String cameraName,
+            @In HeliumEventNotifier heliumEventNotifier,
+            @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
+            @FlowFactory(flowType=LoadChunkDurationFlow.class) FlowFactoryPrm<LoadChunkDurationFlow> loadChunkDurationFlowFactory,
+            @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES,
+            @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS) {
+    // don't try to load LAST chunk's time because chances are that it's still downloading
+    if (!chunkInfoTreeMap.isEmpty()) {
+      File lastChunk = chunkInfoTreeMap.lastKey();
+      //TODO: this cycle can be optimized but I'm too overwhelmed today with other stuff
+      for (Map.Entry<File, ChunkInfo> entry : chunkInfoTreeMap.entrySet()) {
+        File chunkFile = entry.getKey();
+        ChunkInfo chunkInfo = entry.getValue();
+        if (chunkFile != lastChunk) {
+          if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
+            // Load video chunk duration.
+            LoadChunkDurationFlow flow =
+                new LoadChunkDurationFlow(
+                    cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
+            FlowFuture<LoadChunkDurationFlow> loadDurationFlowFuture =
+                loadChunkDurationFlowFactory.runChildFlow(flow);
 
-        //
+            return FuturesTool.tryCatch(
+                loadDurationFlowFuture.getFuture(),
+                flowRet -> {
+                  chunkInfo.chunkState = ChunkState.DURATION_LOADED;
+                  chunkInfo.chunkDuration = flowRet.durationSeconds;
+                  return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(15));
+                },
+                Exception.class,
+                e -> {
+                  chunkInfo.chunkState = ChunkState.DURATION_LOAD_FAILED;
+                  chunkInfo.durationLoadException = e;
+                  return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(15));
+                },
+                MoreExecutors.directExecutor());
+          }
+        }
+      }
+        }
 
-        return ATTEMPT_TO_MERGE_CHUNKS;
+        // No more chunks in state `DISCOVERED`
+        return Futures.immediateFuture(ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1000L)));
     }
 
     @SimpleStepFunction
-    public static Transition ATTEMPT_TO_MERGE_CHUNKS(@In File directoryFile,
-                                                     @StepRef Transition GET_NEW_FILES_FROM_WATCHER) {
-        return GET_NEW_FILES_FROM_WATCHER;
+    public static Transition ATTEMPT_TO_MERGE_CHUNKS(@In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
+                                                     @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
+        //chunkInfoTreeMap.lastKey()
+        return ADD_NEW_FILES_FROM_WATCHER_TO_TREE;
     }
 }
