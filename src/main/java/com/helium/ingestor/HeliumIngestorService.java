@@ -6,7 +6,11 @@ import com.flower.engine.Flower;
 import com.helium.ingestor.config.Config;
 import com.helium.ingestor.core.DatedFileHeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventNotifier;
+import com.helium.ingestor.core.HeliumEventType;
 import com.helium.ingestor.flows.*;
+import com.helium.ingestor.flows.events.FlowExceptionEvent;
+import com.helium.ingestor.flows.events.FlowTerminationEvent;
+
 import java.io.File;
 import java.util.concurrent.ExecutionException;
 
@@ -19,14 +23,21 @@ public class HeliumIngestorService {
         HeliumEventNotifier heliumEventNotifier =
                 new DatedFileHeliumEventNotifier(new File(new File(config.videoFeedFolder()), "events"));
 
+        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+                "Starting HELIUM INGESTOR", config.toString());
+
         Flower flower = new Flower();
         flower.registerFlow(MainIngestorFlow.class);
         flower.registerFlow(CameraProcessRunnerFlow.class);
         flower.registerFlow(VideoChunkManagerFlow.class);
         flower.registerFlow(LoadChunkDurationFlow.class);
+        flower.registerFlow(AnalyzeAndMergeChunkRangeFlow.class);
+        flower.registerFlow(MergeChunkSubRangeFlow.class);
 
-        flower.registerEventProfile(FlowTerminationEvents.class, true);
-        FlowTerminationEvents.setNOTIFIER(heliumEventNotifier);
+        flower.registerEventProfile(FlowTerminationEvent.class, true);
+        flower.registerEventProfile(FlowExceptionEvent.class, true);
+        FlowTerminationEvent.setNOTIFIER(heliumEventNotifier);
+        FlowExceptionEvent.setNOTIFIER(heliumEventNotifier);
 
         flower.initialize();
 
@@ -34,12 +45,22 @@ public class HeliumIngestorService {
 
         MainIngestorFlow testFlow = new MainIngestorFlow(config, heliumEventNotifier);
         FlowFuture<MainIngestorFlow> flowFuture = flowExec.runFlow(testFlow);
-        System.out.println("Flow created. Id: " + flowFuture.getFlowId());
 
+        String eventTitleStarted = String.format("HELIUM INGESTOR started. Main flow: [%s]", flowFuture.getFlowId());
+        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+                eventTitleStarted, config.toString());
+
+        // Wait until main flow is over (not going to happen, probably)
         MainIngestorFlow flow = flowFuture.getFuture().get();
 
-        System.out.println("Flows done. " + flow);
+        String eventTitleShuttingDown = String.format("HELIUM INGESTOR shutting down. Main flow done: [%s]", flowFuture.getFlowId());
+        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+                eventTitleShuttingDown, config.toString());
 
         flower.shutdownScheduler();
+
+        String eventTitleShutdown = "HELIUM INGESTOR shut down.";
+        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+                eventTitleShutdown, config.toString());
     }
 }

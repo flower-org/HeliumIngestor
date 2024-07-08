@@ -21,6 +21,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
+import com.helium.ingestor.flows.events.FlowTerminationEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +37,7 @@ import java.time.format.DateTimeFormatter;
 import static com.helium.ingestor.flows.CameraProcessRunnerFlow.readString;
 
 @FlowType(firstStep = "LAUNCH_PROCESS")
-@DisableEventProfiles({FlowTerminationEvents.class})
+@DisableEventProfiles({FlowTerminationEvent.class})
 public class LoadChunkDurationFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(LoadChunkDurationFlow.class);
 
@@ -75,7 +76,8 @@ public class LoadChunkDurationFlow {
             @Out OutPrm<BufferedReader> stdout,
             @Out OutPrm<BufferedReader> stderr
     ) throws IOException {
-        LOGGER.debug("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
+        //LOGGER.debug("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
+        LOGGER.info("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
 
         Process newProcess = Runtime.getRuntime().exec(command);
 
@@ -159,9 +161,6 @@ public class LoadChunkDurationFlow {
                 durationSeconds.setOutValue(durationSecondsVal);
                 return Futures.immediateFuture(END);
             } catch (Exception e) {
-                LOGGER.error("Error parsing video chunk duration: attempt [{}] camera [{}] process [{}]", attempt,
-                        cameraName, command, e);
-
                 sendFailedToReadVideoChunkEvent(
                     attempt,
                     cameraName,
@@ -176,9 +175,6 @@ public class LoadChunkDurationFlow {
             }
         } else {
             String stderr = stderrOutput.toString();
-            LOGGER.error("Error parsing video chunk duration: attempt [{}] camera [{}] process [{}] stderr[{}]", attempt,
-                    cameraName, command, stderr);
-
             sendFailedToReadVideoChunkEvent(
                     attempt,
                     cameraName,
@@ -195,6 +191,20 @@ public class LoadChunkDurationFlow {
 
     // ----------------------------------------------------------------------------
 
+    public static LocalDateTime getChunkDateTime(String videoChunkFileName) {
+        String chunkDateTimeStr = videoChunkFileName.substring(videoChunkFileName.length() - 23, videoChunkFileName.length() - 4);
+        return LocalDateTime.parse(chunkDateTimeStr, DATE_TIME_FORMATTER);
+    }
+
+    public static long getChunkUnixTime(String videoChunkFileName) {
+        LocalDateTime chunkDateTime = getChunkDateTime(videoChunkFileName);
+        return toUnixTime(chunkDateTime);
+    }
+
+    public static long toUnixTime(LocalDateTime chunkDateTime) {
+        return chunkDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
     static void sendFailedToReadVideoChunkEvent(
             int currentAttempt,
             String cameraName,
@@ -205,23 +215,18 @@ public class LoadChunkDurationFlow {
             String stdoutOutput,
             String stderrOutput
     ) {
-        String eventDetails = String.format("Camera [%s] File [%s] Attempts [%d] Command [%s] %nExit code:%d %nstdout [%s] %nstderr [%s]", cameraName,
+        String eventTitle = String.format("Failed to read video chunk duration File [%s]", videoChunkFileName);
+        String eventDetails = String.format("Camera [%s] File [%s] Attempts [%d] Command [%s]%nExit code:%d%nstdout [%s]%nstderr [%s]", cameraName,
                 videoChunkFileName, currentAttempt, command, exitValue, stdoutOutput, stderrOutput);
-
         try {
-            String chunkDateTimeStr = videoChunkFileName.substring(videoChunkFileName.length() - 23, videoChunkFileName.length() - 4);
-            LocalDateTime chunkDateTime = LocalDateTime.parse(chunkDateTimeStr, DATE_TIME_FORMATTER);
-            long chunkUnixTime = chunkDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-
+            long chunkUnixTime = getChunkUnixTime(videoChunkFileName);
             //We try to time this event accordingly to the time of the chunk we're trying to read, which can be read from chunk filename
             heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.VIDEO_CHUNK_NOT_READABLE, cameraName,
-                    "Failed to read video chunk duration", eventDetails);
+                    eventTitle, eventDetails);
         } catch (Exception e) {
-            LOGGER.error("Error getting video chunk time: filename [{}]", videoChunkFileName);
-
             //Or if that fails, current time
             heliumEventNotifier.notifyEvent(HeliumEventType.VIDEO_CHUNK_NOT_READABLE, cameraName,
-                    "Failed to read video chunk duration", eventDetails);
+                    eventTitle, eventDetails);
         }
     }
 }

@@ -23,6 +23,8 @@ import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 @FlowType(firstStep = "LAUNCH_PROCESS")
 public class CameraProcessRunnerFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(CameraProcessRunnerFlow.class);
@@ -86,6 +88,7 @@ public class CameraProcessRunnerFlow {
 
     @TransitFunction
     public static Transition LAUNCH_PROCESS_TRANSITION(
+            @In @Nullable Process process,
             @In RetryInfo retryInfo,
             @In String cameraName,
             @In HeliumEventNotifier heliumEventNotifier,
@@ -100,8 +103,9 @@ public class CameraProcessRunnerFlow {
             LOGGER.error("Error starting process", retValOrExc.exception().get());
             return LAUNCH_PROCESS.setDelay(Duration.ofMillis(delay));
         } else {
+            String eventTitle = String.format("Camera process started (ffmpeg). pid [%s]", checkNotNull(process).pid());
             heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_STARTED, cameraName,
-                    "Camera process started (ffmpeg)", null);
+                    eventTitle, null);
             return READ_PROCESS_OUTPUT;
         }
     }
@@ -131,9 +135,10 @@ public class CameraProcessRunnerFlow {
                 //and If absence of output timeout elapsed as well
                 if (retryInfo.lastOutputReadTime + Duration.ofSeconds(MISSING_OUTPUT_TIMEOUT_SECONDS).toMillis() < now) {
                     //Then Forcibly kill process
-                    LOGGER.warn("Killing process forcibly");
+                    String eventTitle = String.format("Killing process forcibly due to absence of output. pid [%s]", process.pid());
+                    LOGGER.warn(eventTitle);
                     heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName,
-                            "Killing process forcibly due to absence of output", lastLogLines.toString());
+                            eventTitle, lastLogLines.toString());
 
                     process.destroyForcibly();
 
@@ -169,13 +174,12 @@ public class CameraProcessRunnerFlow {
             Duration delayDuration = Duration.ofMillis(delay);
 
             retryInfo.failedLaunchRetries++;
+            String eventTitle = String.format("Camera process terminated [%d]", process.pid());
             String processTerminationSummary = String.format(
                     "Process terminated with exit value: %d; restarting. Process alias: %s Attempt #%d; Delay time: %s",
                     process.exitValue(), cameraName, retryInfo.failedLaunchRetries, delayDuration);
-            LOGGER.error(processTerminationSummary);
-
             heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_TERMINATED,
-                    cameraName, processTerminationSummary, lastLogLines.toString());
+                    eventTitle, processTerminationSummary, lastLogLines.toString());
 
             return LAUNCH_PROCESS.setDelay(delayDuration);
         } else {

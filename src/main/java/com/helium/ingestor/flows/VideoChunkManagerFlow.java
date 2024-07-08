@@ -1,5 +1,6 @@
 package com.helium.ingestor.flows;
 
+import static com.helium.ingestor.flows.LoadChunkDurationFlow.getChunkDateTime;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
 
 import com.flower.anno.flow.FlowType;
@@ -14,16 +15,23 @@ import com.flower.conf.FlowFuture;
 import com.flower.conf.OutPrm;
 import com.flower.conf.Transition;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.zip.Adler32;
 import javax.annotation.Nullable;
 
 import com.flower.utilities.FuturesTool;
@@ -44,13 +52,22 @@ public class VideoChunkManagerFlow {
         DURATION_LOADED,
         DURATION_LOAD_FAILED,
         MERGED,
-        UNMERGEABLE
+        ZIPPED_IN_A_BAD_CHUNK_ARCHIVE
     }
 
     public static class ChunkInfo {
-        ChunkState chunkState = ChunkState.DISCOVERED;
+        final File chunkFile;
+
+        ChunkState chunkState;
         @Nullable Double chunkDuration = null;
         @Nullable Exception durationLoadException = null;
+        @Nullable Long fileLength = null;
+        @Nullable byte[] checksum = null;
+
+        public ChunkInfo(File chunkFile) {
+            this.chunkState = ChunkState.DISCOVERED;
+            this.chunkFile = chunkFile;
+        }
     }
 
     @State final String cameraName;
@@ -101,12 +118,12 @@ public class VideoChunkManagerFlow {
     @SimpleStepFunction
     public static Transition INITIAL_DIRECTORY_LOAD(@In File directoryFile,
                                                     @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
-                                                    @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
+                                                    @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) throws NoSuchAlgorithmException, IOException {
         File[] files = directoryFile.listFiles(File::isFile);
         if (files != null) {
-            for (File f : files) {
-                if (!chunkInfoTreeMap.containsKey(f)) {
-                    chunkInfoTreeMap.put(f, new ChunkInfo());
+            for (File chunkFile : files) {
+                if (!chunkInfoTreeMap.containsKey(chunkFile)) {
+                    chunkInfoTreeMap.put(chunkFile, new ChunkInfo(chunkFile));
                 }
             }
         }
@@ -118,19 +135,19 @@ public class VideoChunkManagerFlow {
     public static Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE(@In File directoryFile,
                                                                 @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
                                                                 @In WatchService watcher,
-                                                                @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES) {
+                                                                @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES) throws NoSuchAlgorithmException, IOException {
         WatchKey watchKey = watcher.poll();
         if (watchKey != null) {
             List<WatchEvent<?>> events = watchKey.pollEvents();
 
             for (WatchEvent<?> event : events) {
                 WatchEvent<Path> ev = (WatchEvent<Path>)event;
-                File f = ev.context().toFile();
-                if (!chunkInfoTreeMap.containsKey(f)) {
+                File chunkFile = ev.context().toFile();
+                if (!chunkInfoTreeMap.containsKey(chunkFile)) {
                     //For some reason here I'm getting file with the correct filename but incorrect parent directory
                     // so f.getAbsolutePath() returns non-existent path. The line below is to fix that.
-                    f = new File(directoryFile, f.getName());
-                    chunkInfoTreeMap.put(f, new ChunkInfo());
+                    chunkFile = new File(directoryFile, chunkFile.getName());
+                    chunkInfoTreeMap.put(chunkFile, new ChunkInfo(chunkFile));
                 }
             }
             watchKey.reset();
@@ -146,39 +163,41 @@ public class VideoChunkManagerFlow {
             @FlowFactory(flowType=LoadChunkDurationFlow.class) FlowFactoryPrm<LoadChunkDurationFlow> loadChunkDurationFlowFactory,
             @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES,
             @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS) {
-    // don't try to load LAST chunk's time because chances are that it's still downloading
-    if (!chunkInfoTreeMap.isEmpty()) {
-      File lastChunk = chunkInfoTreeMap.lastKey();
-      //TODO: this cycle can be optimized but I'm too overwhelmed today with other stuff
-      for (Map.Entry<File, ChunkInfo> entry : chunkInfoTreeMap.entrySet()) {
-        File chunkFile = entry.getKey();
-        ChunkInfo chunkInfo = entry.getValue();
-        if (chunkFile != lastChunk) {
-          if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
-            // Load video chunk duration.
-            LoadChunkDurationFlow flow =
-                new LoadChunkDurationFlow(
-                    cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
-            FlowFuture<LoadChunkDurationFlow> loadDurationFlowFuture =
-                loadChunkDurationFlowFactory.runChildFlow(flow);
+        // don't try to load LAST chunk's time because chances are that it's still downloading
+        if (!chunkInfoTreeMap.isEmpty()) {
+          File lastChunk = chunkInfoTreeMap.lastKey();
+          //TODO: this cycle can be optimized but I'm too overwhelmed today with other stuff
+          for (Map.Entry<File, ChunkInfo> entry : chunkInfoTreeMap.entrySet()) {
+            File chunkFile = entry.getKey();
+            ChunkInfo chunkInfo = entry.getValue();
+            if (chunkFile != lastChunk) {
+              if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
+                // Load video chunk duration.
+                LoadChunkDurationFlow flow =
+                    new LoadChunkDurationFlow(cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
+                FlowFuture<LoadChunkDurationFlow> loadDurationFlowFuture =
+                    loadChunkDurationFlowFactory.runChildFlow(flow);
 
-            return FuturesTool.tryCatch(
-                loadDurationFlowFuture.getFuture(),
-                flowRet -> {
-                  chunkInfo.chunkState = ChunkState.DURATION_LOADED;
-                  chunkInfo.chunkDuration = flowRet.durationSeconds;
-                  return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(15));
-                },
-                Exception.class,
-                e -> {
-                  chunkInfo.chunkState = ChunkState.DURATION_LOAD_FAILED;
-                  chunkInfo.durationLoadException = e;
-                  return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(15));
-                },
-                MoreExecutors.directExecutor());
+                return FuturesTool.tryCatch(
+                    loadDurationFlowFuture.getFuture(),
+                    flowRet -> {
+                      chunkInfo.chunkState = ChunkState.DURATION_LOADED;
+                      chunkInfo.chunkDuration = flowRet.durationSeconds;
+                      chunkInfo.fileLength = chunkFile.length();
+                      chunkInfo.checksum = getChecksumForFile(chunkFile);
+
+                      return ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1));
+                    },
+                    Exception.class,
+                    e -> {
+                      chunkInfo.chunkState = ChunkState.DURATION_LOAD_FAILED;
+                      chunkInfo.durationLoadException = e;
+                      return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(1));
+                    },
+                    MoreExecutors.directExecutor());
+              }
+            }
           }
-        }
-      }
         }
 
         // No more chunks in state `DISCOVERED`
@@ -186,9 +205,127 @@ public class VideoChunkManagerFlow {
     }
 
     @SimpleStepFunction
-    public static Transition ATTEMPT_TO_MERGE_CHUNKS(@In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
+    public static ListenableFuture<Transition> ATTEMPT_TO_MERGE_CHUNKS(@In String cameraName,
+                                                     @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
+                                                     @In File directoryFile,
+                                                     @In HeliumEventNotifier heliumEventNotifier,
+                                                     @FlowFactory(flowType = AnalyzeAndMergeChunkRangeFlow.class) FlowFactoryPrm<AnalyzeAndMergeChunkRangeFlow> flowFactory,
                                                      @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
-        //chunkInfoTreeMap.lastKey()
-        return ADD_NEW_FILES_FROM_WATCHER_TO_TREE;
+        File firstChunk = chunkInfoTreeMap.firstKey();
+        File lastChunk = chunkInfoTreeMap.lastKey();
+
+        //1. If firstChunk is different hour from lastChunk, we can merge oldest hour.
+        LocalDateTime firstChunkDateTime = getChunkDateTime(firstChunk.getName());
+        LocalDateTime lastChunkDateTime = getChunkDateTime(lastChunk.getName());
+
+        boolean hourOrMoreBefore = firstChunkDateTime.isBefore(lastChunkDateTime.minusHours(1L));
+        boolean differentHour = firstChunkDateTime.getHour() != lastChunkDateTime.getHour();
+        if (!hourOrMoreBefore && !differentHour) {
+            //can't merge yet
+            return Futures.immediateFuture(ADD_NEW_FILES_FROM_WATCHER_TO_TREE);
+        }
+
+        //2. If there are no chunks with DISCOVERED state in the first hour, we can merge.
+        for (Map.Entry<File, ChunkInfo> chunkInfoEntry : chunkInfoTreeMap.entrySet()) {
+            File chunkFile = chunkInfoEntry.getKey();
+            ChunkInfo chunkInfo = chunkInfoEntry.getValue();
+
+            if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
+                //can't merge yet
+                return Futures.immediateFuture(ADD_NEW_FILES_FROM_WATCHER_TO_TREE);
+            }
+
+            LocalDateTime chunkDateTime = getChunkDateTime(chunkFile.getName());
+            if (!hourMatches(chunkDateTime, firstChunkDateTime)) {
+                //Iterated through all chunks in merge hour
+                break;
+            }
+        }
+
+        //3. Analyze list of chunks to merge
+        List<ChunkInfo> chunksToMerge = new ArrayList<>();
+        while (!chunkInfoTreeMap.isEmpty()) {
+            LocalDateTime chunkDateTime = getChunkDateTime(chunkInfoTreeMap.firstEntry().getKey().getName());
+            if (!hourMatches(chunkDateTime, firstChunkDateTime)) { break; }
+
+            chunksToMerge.add(chunkInfoTreeMap.pollFirstEntry().getValue());
+        }
+
+        //4. run flow to merge the final range
+        File outputFolder = new File(directoryFile, "merged");
+        AnalyzeAndMergeChunkRangeFlow analyzeAndMergeChunkRangeFlow = new AnalyzeAndMergeChunkRangeFlow(
+                cameraName, outputFolder, heliumEventNotifier,
+                chunksToMerge, chunkInfoTreeMap.firstEntry().getValue());
+        FlowFuture<AnalyzeAndMergeChunkRangeFlow> flowFuture = flowFactory.runChildFlow(analyzeAndMergeChunkRangeFlow);
+        return Futures.transform(flowFuture.getFuture(),
+            ignored_ -> ADD_NEW_FILES_FROM_WATCHER_TO_TREE.setDelay(Duration.ofSeconds(1)),
+            MoreExecutors.directExecutor());
+    }
+
+    // --------------------------------------------------------------------------------------------
+
+    static boolean hourMatches(LocalDateTime dateTime, LocalDateTime hourToMatch) {
+        return (dateTime.getYear() == hourToMatch.getYear()
+            && dateTime.getDayOfYear() == hourToMatch.getDayOfYear()
+            && dateTime.getHour() == hourToMatch.getHour());
+    }
+
+    static byte[] getChecksumForFile(File file) {
+        return getAdler32ForFile(file);
+        //SHA-256 too slow
+        //return getSha256ForFile(file);
+    }
+
+    static byte[] getSha256ForFile(File file) {
+        try {
+            // Use SHA-256 algorithm
+            MessageDigest sha256Digest = MessageDigest.getInstance("SHA-256");
+
+            try (FileInputStream fis = new FileInputStream(file)) {
+                byte[] byteArray = new byte[1024];
+                int byteCount = 0;
+
+                // Read file data and update digest
+                while ((byteCount = fis.read(byteArray)) != -1) {
+                    sha256Digest.update(byteArray, 0, byteCount);
+                }
+            }
+
+            return sha256Digest.digest();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static byte[] getAdler32ForFile(File file) {
+        try {
+            Adler32 adler32 = new Adler32();
+
+            try (FileInputStream fis = new FileInputStream(file)) {
+                byte[] byteArray = new byte[1024];
+                int byteCount = 0;
+
+                // Read file data and update digest
+                while ((byteCount = fis.read(byteArray)) != -1) {
+                    adler32.update(byteArray, 0, byteCount);
+                }
+            }
+
+            long crc = adler32.getValue();
+            ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+            buffer.putLong(crc);
+            return buffer.array();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static String byteArrayToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+
+        return sb.toString();
     }
 }
