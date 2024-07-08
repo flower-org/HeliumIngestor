@@ -42,6 +42,9 @@ import com.helium.ingestor.core.HeliumEventNotifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+//TODO: we determine gaps in footage post-factum, at merge stage
+// The result of that is that our gap in footage event is delayed
+// We can be more proactive about detecting gaps and throw events as soon as we determine the duration of chunks.
 @FlowType(firstStep = "START_WATCHER")
 public class VideoChunkManagerFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(VideoChunkManagerFlow.class);

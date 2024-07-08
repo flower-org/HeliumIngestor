@@ -1,8 +1,7 @@
 package com.helium.ingestor.flows;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.helium.ingestor.flows.LoadChunkDurationFlow.getChunkDateTime;
-import static com.helium.ingestor.flows.LoadChunkDurationFlow.getChunkUnixTime;
+import static com.helium.ingestor.flows.LoadChunkDurationFlow.*;
 import static com.helium.ingestor.flows.MergeChunkSubRangeFlow.getRenameFileName;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkInfo;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkState;
@@ -310,8 +309,9 @@ public class AnalyzeAndMergeChunkRangeFlow {
             chunkDurationsReport.append(String.format("%s [%s]", chunk.chunkFile.getName(), chunk.chunkDuration));
         });
         String eventDetails = String.format("%s%nDurations: [%s]", eventTitle, chunkDurationsReport);
+        long wmUnixTime = toUnixTime(currentRangeWm);
         long chunkUnixTime = getChunkUnixTime(chunkInfoAfterGap.chunkFile.getName());
-        heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.GAP_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
+        heliumEventNotifier.notifyEvent(wmUnixTime, chunkUnixTime, HeliumEventType.GAP_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
 
         ChunkInfo lastChunk = currentRange.get(currentRange.size() - 1);
         Duration rangeDuration = getRangeDuration(currentRange, lastChunk).plus(secondsAsDoubleToDuration(checkNotNull(lastChunk.chunkDuration)));

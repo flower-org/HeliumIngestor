@@ -32,12 +32,20 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
         }
     }
 
-    public static String getEventMessageStr(Long unixTimeMillis, HeliumEventType eventType, @Nullable String cameraName,
+    public static String getEventMessageStr(Long startUnixTimeMillis, Long endUnixTimeMillis, HeliumEventType eventType, @Nullable String cameraName,
                                             String eventTitle, @Nullable String eventDetails) {
-        LocalDateTime eventDateTime = Instant.ofEpochMilli(unixTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
-        String eventDateTimeStr = eventDateTime.format(DATE_TIME_FORMATTER);
-        return String.format("Camera [%s]: [%s]. time: [%s] [%s]:\n\t%s",
-                cameraName, eventType, eventDateTimeStr, eventTitle, eventDetails);
+        LocalDateTime startEventDateTime = Instant.ofEpochMilli(startUnixTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        LocalDateTime endEventDateTime = Instant.ofEpochMilli(endUnixTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        String startEventDateTimeStr = startEventDateTime.format(DATE_TIME_FORMATTER);
+        String endEventDateTimeStr = endEventDateTime.format(DATE_TIME_FORMATTER);
+
+        if (startEventDateTimeStr.equals(endEventDateTimeStr)) {
+            return String.format("Camera [%s]: [%s]. Time: [%s]; [%s]:\n\t%s",
+                    cameraName, eventType, startEventDateTimeStr, eventTitle, eventDetails);
+        } else {
+            return String.format("Camera [%s]: [%s]. From: [%s]-[%s]; [%s]:\n\t%s",
+                    cameraName, eventType, startEventDateTimeStr, endEventDateTimeStr, eventTitle, eventDetails);
+        }
     }
 
     protected BufferedWriter getEventFileWriter() throws IOException {
@@ -57,11 +65,11 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
     }
 
     @Override
-    public void notifyEvent(Long unixTimeMs, HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
+    public void notifyEvent(Long startUnixTimeMs, Long endUnixTimeMs, HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
         //TODO: remove this debug clause
         if (eventType == HeliumEventType.CAMERA_PROCESS_STARTED || eventType == HeliumEventType.CAMERA_PROCESS_TERMINATED) { return; }
 
-        String eventMessage = getEventMessageStr(unixTimeMs, eventType, cameraName, eventTitle, eventDetails);
+        String eventMessage = getEventMessageStr(startUnixTimeMs, endUnixTimeMs, eventType, cameraName, eventTitle, eventDetails);
         LOGGER.warn("!!!EVENT!!! {}", eventMessage);
         try {
             String timestamp = LocalDateTime.now().format(DATE_TIME_FORMATTER);

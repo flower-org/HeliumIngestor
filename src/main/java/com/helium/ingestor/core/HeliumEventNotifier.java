@@ -11,8 +11,18 @@ public interface HeliumEventNotifier {
     notifyEvent(System.currentTimeMillis(), eventType, cameraName, eventTitle, eventDetails);
   }
 
-  void notifyEvent(
+  default void notifyEvent(
       Long unixTimeMs,
+      HeliumEventType eventType,
+      @Nullable String cameraName,
+      String eventTitle,
+      @Nullable String eventDetails) {
+    notifyEvent(unixTimeMs, unixTimeMs, eventType, cameraName, eventTitle, eventDetails);
+  }
+
+  void notifyEvent(
+      Long startUnixTimeMs,
+      Long endUnixTimeMs,
       HeliumEventType eventType,
       @Nullable String cameraName,
       String eventTitle,
