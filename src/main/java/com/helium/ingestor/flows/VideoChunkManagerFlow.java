@@ -77,7 +77,6 @@ public class VideoChunkManagerFlow {
     @State final HeliumEventNotifier heliumEventNotifier;
     @State @Nullable WatchService watcher;
     @State final File directoryFile;
-    //TODO: filepath instead of path?
     @State final TreeMap<File, ChunkInfo> chunkInfoTreeMap;
     @State final TreeMap<File, ChunkInfo> mergedChunkInfoTreeMap;
     @State @Nullable File archiveDirectoryFile;

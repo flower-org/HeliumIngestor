@@ -66,9 +66,6 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
 
     @Override
     public void notifyEvent(Long startUnixTimeMs, Long endUnixTimeMs, HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
-        //TODO: remove this debug clause
-        if (eventType == HeliumEventType.CAMERA_PROCESS_STARTED || eventType == HeliumEventType.CAMERA_PROCESS_TERMINATED) { return; }
-
         String eventMessage = getEventMessageStr(startUnixTimeMs, endUnixTimeMs, eventType, cameraName, eventTitle, eventDetails);
         LOGGER.warn("!!!EVENT!!! {}", eventMessage);
         try {

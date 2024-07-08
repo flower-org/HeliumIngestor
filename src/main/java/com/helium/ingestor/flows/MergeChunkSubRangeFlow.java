@@ -49,11 +49,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // TODO: DRY With LoadChunkDurationFlow
-/** TODO: this javadoc no longer relevant is misleading remove
- * ARG_MAX (getconf ARG_MAX) is typically about 2M (2097152 on my Ubuntu)
- * To have enough space in the CMD for all chunks consider individual chunk full path not to exceed
- * 2097152 / (60*60) = definitely less than 582 bytes (per hour, chunk a second, not including separators and boilerplate)
- */
 @FlowType(firstStep = "INIT_PROCESS")
 @DisableEventProfiles({FlowTerminationEvent.class})
 public class MergeChunkSubRangeFlow {
