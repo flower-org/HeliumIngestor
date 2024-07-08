@@ -76,8 +76,7 @@ public class LoadChunkDurationFlow {
             @Out OutPrm<BufferedReader> stdout,
             @Out OutPrm<BufferedReader> stderr
     ) throws IOException {
-        //LOGGER.debug("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
-        LOGGER.info("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
+        LOGGER.debug("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
 
         Process newProcess = Runtime.getRuntime().exec(command);
 

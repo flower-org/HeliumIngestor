@@ -151,7 +151,23 @@ public class VideoFootageArchiverFlow {
         }
     }
 
-    private static Double getPercentUsed(StringBuilder stdoutOutput) {
+    @SimpleStepFunction
+    public static Transition TRY_ARCHIVE_FILE_AND_DELETE_IF_FAILS(
+        @StepRef Transition LAUNCH_PROCESS
+    ) {
+        return LAUNCH_PROCESS;
+    }
+
+    @SimpleStepFunction
+    public static Transition TRY_ARCHIVE_FILE_AND_RETRY_IF_FAILS(
+            @StepRef Transition LAUNCH_PROCESS
+    ) {
+        return LAUNCH_PROCESS;
+    }
+
+    // ---------------------------------------------------------------------------------
+
+    @Nullable static Double getPercentUsed(StringBuilder stdoutOutput) {
         String dfOutput = stdoutOutput.toString().trim();
         String[] lines = dfOutput.split("\n");
 
@@ -172,19 +188,5 @@ public class VideoFootageArchiverFlow {
         }
 
         return percentUsed;
-    }
-
-    @SimpleStepFunction
-    public static Transition TRY_ARCHIVE_FILE_AND_DELETE_IF_FAILS(
-        @StepRef Transition LAUNCH_PROCESS
-    ) {
-        return LAUNCH_PROCESS;
-    }
-
-    @SimpleStepFunction
-    public static Transition TRY_ARCHIVE_FILE_AND_RETRY_IF_FAILS(
-            @StepRef Transition LAUNCH_PROCESS
-    ) {
-        return LAUNCH_PROCESS;
     }
 }
