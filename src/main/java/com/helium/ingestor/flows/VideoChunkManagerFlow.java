@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
 //TODO: we determine gaps in footage post-factum, at merge stage
 // The result of that is that our gap in footage event is delayed
 // We can be more proactive about detecting gaps and throw events as soon as we determine the duration of chunks.
+// P.S. Also, we can run range merge right away on detection of such gaps
 @FlowType(firstStep = "START_WATCHER")
 public class VideoChunkManagerFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(VideoChunkManagerFlow.class);
@@ -164,46 +165,67 @@ public class VideoChunkManagerFlow {
             @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
             @FlowFactory(flowType=LoadChunkDurationFlow.class) FlowFactoryPrm<LoadChunkDurationFlow> loadChunkDurationFlowFactory,
             @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES,
-            @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS) {
+            @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS,
+            @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
         // don't try to load LAST chunk's time because chances are that it's still downloading
         if (!chunkInfoTreeMap.isEmpty()) {
           File lastChunk = chunkInfoTreeMap.lastKey();
           //TODO: this cycle can be optimized but I'm too overwhelmed today with other stuff
+          ChunkInfo previousChunk = null;
           for (Map.Entry<File, ChunkInfo> entry : chunkInfoTreeMap.entrySet()) {
-            File chunkFile = entry.getKey();
-            ChunkInfo chunkInfo = entry.getValue();
-            if (chunkFile != lastChunk) {
-              if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
-                // Load video chunk duration.
-                LoadChunkDurationFlow flow =
-                    new LoadChunkDurationFlow(cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
-                FlowFuture<LoadChunkDurationFlow> loadDurationFlowFuture =
-                    loadChunkDurationFlowFactory.runChildFlow(flow);
+            ChunkInfo currentChunkInfo = entry.getValue();
+            if (previousChunk == null) {
+                previousChunk = currentChunkInfo;
+            } else {
+                File chunkFile = previousChunk.chunkFile;
+                if (chunkFile != lastChunk) {
+                    if (previousChunk.chunkState == ChunkState.DISCOVERED) {
+                        // Load video chunk duration.
+                        ChunkInfo chunkInfo = previousChunk;
+                        Duration expectedDuration = Duration.between(getChunkDateTime(previousChunk.chunkFile.getName()), getChunkDateTime(currentChunkInfo.chunkFile.getName()));
+                        if (expectedDuration.toMillis() <= 2000) {
+                            //Don't load durations for chunks <= 2s
+                            chunkInfo.chunkState = ChunkState.DURATION_LOADED;
+                            chunkInfo.chunkDuration = expectedDuration.toMillis() / 1_000D;
+                            chunkInfo.fileLength = chunkFile.length();
+                        } else {
+                            //TODO: instead of DurationFlow/ffprobe write a lightweight function to extract duration from mp4
+                            // Ideally pair that task with sending the chunk to the Analyzer service.
+                            LoadChunkDurationFlow flow =
+                                    new LoadChunkDurationFlow(cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
+                            FlowFuture<LoadChunkDurationFlow> loadDurationFlowFuture =
+                                    loadChunkDurationFlowFactory.runChildFlow(flow);
 
-                return FuturesTool.tryCatch(
-                    loadDurationFlowFuture.getFuture(),
-                    flowRet -> {
-                      chunkInfo.chunkState = ChunkState.DURATION_LOADED;
-                      chunkInfo.chunkDuration = flowRet.durationSeconds;
-                      chunkInfo.fileLength = chunkFile.length();
-                      chunkInfo.checksum = getChecksumForFile(chunkFile);
+                            return FuturesTool.tryCatch(
+                                    loadDurationFlowFuture.getFuture(),
+                                    flowRet -> {
+                                        chunkInfo.chunkState = ChunkState.DURATION_LOADED;
+                                        chunkInfo.chunkDuration = flowRet.durationSeconds;
+                                        chunkInfo.fileLength = chunkFile.length();
+                                        //chunkInfo.checksum = getChecksumForFile(chunkFile);
 
-                      return ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1));
-                    },
-                    Exception.class,
-                    e -> {
-                      chunkInfo.chunkState = ChunkState.DURATION_LOAD_FAILED;
-                      chunkInfo.durationLoadException = e;
-                      return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(1));
-                    },
-                    MoreExecutors.directExecutor());
-              }
+                                        return ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1));
+                                    },
+                                    Exception.class,
+                                    e -> {
+                                        chunkInfo.chunkState = ChunkState.DURATION_LOAD_FAILED;
+                                        chunkInfo.durationLoadException = e;
+                                        return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(1));
+                                    },
+                                    MoreExecutors.directExecutor());
+                        }
+                    }
+                }
+                previousChunk = currentChunkInfo;
             }
           }
-        }
 
-        // No more chunks in state `DISCOVERED`
-        return Futures.immediateFuture(ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1000L)));
+            // No more chunks in state `DISCOVERED`
+            return Futures.immediateFuture(ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1000L)));
+        } else {
+            // No chunks in the tree, need to load chunks
+            return Futures.immediateFuture(ADD_NEW_FILES_FROM_WATCHER_TO_TREE.setDelay(Duration.ofMillis(1000L)));
+        }
     }
 
     @SimpleStepFunction

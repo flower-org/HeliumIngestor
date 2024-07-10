@@ -54,7 +54,7 @@ import org.slf4j.LoggerFactory;
 public class MergeChunkSubRangeFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(MergeChunkSubRangeFlow.class);
 
-    final static DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
+    final static DateTimeFormatter MERGED_FILE_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
 
     /** Stitches videos without re-encoding them, with the concat protocol (fast). */
 //    final static String CMD = "ffmpeg -i \"concat:%s\" -c copy %s"; This didn't work
@@ -114,8 +114,8 @@ public class MergeChunkSubRangeFlow {
         File outputFileVal = new File(outputFolder,
                 String.format("%s_merged_%s_%s.mp4",
                         cameraName,
-                        DATE_TIME_FORMATTER.format(startOfRange),
-                        DATE_TIME_FORMATTER.format(endOfRange)));
+                        MERGED_FILE_DATE_TIME_FORMATTER.format(startOfRange),
+                        MERGED_FILE_DATE_TIME_FORMATTER.format(endOfRange)));
 
         // Check for pre-existing merge output file
         if (outputFileVal.exists()) {

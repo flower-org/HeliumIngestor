@@ -5,8 +5,6 @@ import static com.helium.ingestor.flows.LoadChunkDurationFlow.*;
 import static com.helium.ingestor.flows.MergeChunkSubRangeFlow.getRenameFileName;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkInfo;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkState;
-import static com.helium.ingestor.flows.VideoChunkManagerFlow.byteArrayToHex;
-import static com.helium.ingestor.flows.VideoChunkManagerFlow.getChecksumForFile;
 
 import com.flower.anno.event.DisableEventProfiles;
 import com.flower.anno.flow.FlowType;
@@ -29,14 +27,12 @@ import com.helium.ingestor.core.HeliumEventType;
 import com.helium.ingestor.flows.events.FlowTerminationEvent;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -55,7 +51,12 @@ public class AnalyzeAndMergeChunkRangeFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(AnalyzeAndMergeChunkRangeFlow.class);
     final static String CMD = "ffmpeg -i \"concat:%s\" -c copy %s";
     final static Integer MAX_RETRIES = 3;
-    final static DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
+    final static DateTimeFormatter ZIP_FILE_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
+
+    /** Even though the precision is to a second, experimentally it was determined that sometimes gaps slightly larger
+     * than 1 second are being detected, but don't indicate an actual footage loss, resulting in false positives.
+     * For that reason we start calling it a gap only if the distance is larger than 1.5 sec */
+    final static int GAP_IN_FOOTAGE_SIZE_MS = 1500;
 
     public static class ChunkRangeInfo {
         final List<ChunkInfo> chunkRange;
@@ -108,27 +109,28 @@ public class AnalyzeAndMergeChunkRangeFlow {
         for (ChunkInfo chunkInfo : chunksToMerge) {
             if (chunkInfo.chunkState == ChunkState.DURATION_LOADED) {
                 File chunkFile = chunkInfo.chunkFile;
-                boolean lengthMismatch = chunkFile.length() != checkNotNull(chunkInfo.fileLength);
-                byte[] checksum = getChecksumForFile(chunkFile);
-                boolean shaMismatch = !Arrays.equals(checksum, chunkInfo.checksum);
+                boolean fileSizeMismatch = chunkFile.length() != checkNotNull(chunkInfo.fileLength);
+                //TODO: Add config switch for this
+                //byte[] checksum = getChecksumForFile(chunkFile);
+                //boolean shaMismatch = !Arrays.equals(checksum, chunkInfo.checksum);
 
                 //We try to time the events accordingly to the time of the chunk we're trying to read, which can be read from chunk filename
                 long chunkUnixTime = getChunkUnixTime(chunkFile.getName());
-                if (lengthMismatch) {
+                if (fileSizeMismatch) {
                     String eventTitle = String.format("Video chunk file size mismatch. File [%s]", chunkFile.getName());
                     String eventDetails = String.format("Video chunk file size mismatch. File [%s] Old length [%s] New length [%s]",
                             chunkFile.getName(), chunkInfo.fileLength, chunkFile.length());
                     heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.VIDEO_CHUNK_FILE_SIZE_MISMATCH, cameraName,
                             eventTitle, eventDetails);
                 }
-                if (shaMismatch) {
+                /*if (shaMismatch) {
                     String eventTitle = String.format("Video chunk file checksum mismatch. File [%s]", chunkFile.getName());
                     String eventDetails = String.format("Video chunk file checksum mismatch. File [%s] Old checksum [%s] New checksum [%s]",
                             chunkFile.getName(), byteArrayToHex(checkNotNull(chunkInfo.checksum)), byteArrayToHex(checksum));
                     heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.VIDEO_CHUNK_CHECKSUM_MISMATCH, cameraName,
                             eventTitle, eventDetails);
-                }
-                if (lengthMismatch || shaMismatch) {
+                }*/
+                if (fileSizeMismatch /*|| shaMismatch*/) {
                     badChunks.add(chunkInfo);
                 }
             } else {
@@ -163,7 +165,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
           } else {
               LocalDateTime chunkStart = getChunkDateTime(chunkInfo.chunkFile.getName());
               Duration distance = Duration.between(currentRangeWm, chunkStart);
-              if (distance.toMillis() >= 1000) {
+              if (distance.toMillis() >= GAP_IN_FOOTAGE_SIZE_MS) {
                   // Gap inside the merge range found. Reporting event: GAP_IN_FOOTAGE
                   notifyGapAndSurplusReport(cameraName, currentRange, chunkInfo, checkNotNull(currentRangeWm),
                           distance, heliumEventNotifier, checkNotNull(actualRangeDuration));
@@ -189,7 +191,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
         // Determine if there is a gap between the last range and next hour, and report if found
         LocalDateTime nextHourChunkStart = getChunkDateTime(nextHourChunk.chunkFile.getName());
         Duration distance = Duration.between(checkNotNull(currentRangeWm), nextHourChunkStart);
-        if (distance.toMillis() >= 1000) {
+        if (distance.toMillis() >= GAP_IN_FOOTAGE_SIZE_MS) {
             // Gap inside the merge range found. Reporting event: GAP_IN_FOOTAGE
             notifyGapAndSurplusReport(cameraName, currentRange, nextHourChunk, currentRangeWm, distance, heliumEventNotifier, checkNotNull(actualRangeDuration));
         } else {
@@ -248,18 +250,19 @@ public class AnalyzeAndMergeChunkRangeFlow {
           ChunkInfo lastChunk = chunksToMerge.get(chunksToMerge.size() - 1);
 
           LocalDateTime startOfRange = getChunkDateTime(firstChunk.chunkFile.getName());
-          LocalDateTime endOfRange =
-              getChunkDateTime(lastChunk.chunkFile.getName())
-                  .plus(secondsAsDoubleToDuration(checkNotNull(lastChunk.chunkDuration)));
+          LocalDateTime endOfRange = getChunkDateTime(lastChunk.chunkFile.getName());
+          if (lastChunk.chunkDuration != null) {
+              endOfRange = endOfRange.plus(secondsAsDoubleToDuration(lastChunk.chunkDuration));
+          }
 
           File outputZipFile =
               new File(
                   outputFolder,
                   String.format(
-                      "%s_merged_%s_%s.zip",
+                      "%s_merged_%s_%s_bad.zip",
                       cameraName,
-                      DATE_TIME_FORMATTER.format(startOfRange),
-                      DATE_TIME_FORMATTER.format(endOfRange)));
+                      ZIP_FILE_DATE_TIME_FORMATTER.format(startOfRange),
+                      ZIP_FILE_DATE_TIME_FORMATTER.format(endOfRange)));
 
           if (outputZipFile.exists()) {
               File renameFilename = getRenameFileName(outputZipFile);
@@ -301,19 +304,15 @@ public class AnalyzeAndMergeChunkRangeFlow {
         // Gap inside the merge range found. Reporting event: GAP_IN_FOOTAGE
         String eventTitle = String.format("Gap found in footage starting from [%s] to [%s]. WM shows: [%s]. Distance [%s]",
                 currentRange.get(0).chunkFile.getName(), chunkInfoAfterGap.chunkFile.getName(), currentRangeWm, distance);
-        StringBuilder chunkDurationsReport = new StringBuilder();
-        currentRange.forEach(chunk -> {
-            if (!chunkDurationsReport.isEmpty()) {
-                chunkDurationsReport.append(" | ");
-            }
-            chunkDurationsReport.append(String.format("%s [%s]", chunk.chunkFile.getName(), chunk.chunkDuration));
-        });
-        String eventDetails = String.format("%s%nDurations: [%s]", eventTitle, chunkDurationsReport);
+
+        ChunkInfo lastChunk = currentRange.get(currentRange.size()-1);
+        String durationMismatchReport = String.format("%s [%s]", lastChunk.chunkFile.getName(), lastChunk.chunkDuration);
+        String eventDetails = String.format("%s%nDurations: [%s]", eventTitle, durationMismatchReport);
+
         long wmUnixTime = toUnixTime(currentRangeWm);
         long chunkUnixTime = getChunkUnixTime(chunkInfoAfterGap.chunkFile.getName());
         heliumEventNotifier.notifyEvent(wmUnixTime, chunkUnixTime, HeliumEventType.GAP_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
 
-        ChunkInfo lastChunk = currentRange.get(currentRange.size() - 1);
         Duration rangeDuration = getRangeDuration(currentRange, lastChunk).plus(secondsAsDoubleToDuration(checkNotNull(lastChunk.chunkDuration)));
         notifySurplusReport(cameraName, currentRange, chunkInfoAfterGap, heliumEventNotifier, rangeDuration, actualDuration);
     }
@@ -341,7 +340,10 @@ public class AnalyzeAndMergeChunkRangeFlow {
             String eventDetails = String.format("%s RangeDuration [%s] ActualDuration [%s]%nDurations: [%s]",
                     eventTitle, rangeDuration, actualDuration, chunkDurationsReport);
             long chunkUnixTime = getChunkUnixTime(firstChunkOfTheNextRange.chunkFile.getName());
-            heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.SURPLUS_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
+
+            //TODO: event removed due to too many false positives, restore/debug
+            LOGGER.warn(eventDetails);
+            //heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.SURPLUS_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
         }
     }
 
