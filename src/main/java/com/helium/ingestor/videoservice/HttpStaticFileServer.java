@@ -31,10 +31,21 @@ import java.io.File;
 public final class HttpStaticFileServer {
   @Nullable EventLoopGroup bossGroup;
   @Nullable EventLoopGroup workerGroup;
+  final int bossGroupThreadCount;
+  final int workerGroupThreadCount;
 
-  public static void main(String[] args) throws Exception {
+    public HttpStaticFileServer() {
+        this(1, 1);
+    }
+
+    public HttpStaticFileServer(int bossGroupThreadCount, int workerGroupThreadCount) {
+      this.bossGroupThreadCount = bossGroupThreadCount;
+      this.workerGroupThreadCount = workerGroupThreadCount;
+    }
+
+    public static void main(String[] args) throws Exception {
     File rootFolder = new File("/home/john");
-    HttpStaticFileServer staticFileServer = new HttpStaticFileServer();
+    HttpStaticFileServer staticFileServer = new HttpStaticFileServer(1, 1);
     try {
       Channel ch = staticFileServer.startServer(rootFolder, false, 8080);
       ch.closeFuture().sync();
