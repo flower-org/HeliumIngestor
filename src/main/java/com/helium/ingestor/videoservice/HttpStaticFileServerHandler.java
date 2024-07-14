@@ -50,9 +50,12 @@ import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
@@ -360,18 +363,30 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
       .append("<ul>")
       .append("<li><a href=\"../\">..</a></li>\r\n");
 
-    File[] files = dir.listFiles();
-    if (files != null) {
-      for (File f: files) {
-        if (f.isHidden() || !f.canRead()) {
-          continue;
-        }
+    File[] allFiles = dir.listFiles();
+    if (allFiles != null) {
+      List<File> directories = new ArrayList<>();
+      List<File> files = new ArrayList<>();
+      for (File f : allFiles) {
+        if (f.isDirectory()) { directories.add(f); } else { files.add(f); }
+      }
+      directories.sort(File::compareTo);
+      files.sort(File::compareTo);
 
+      for (File f : directories) {
         String name = f.getName();
-        if (!ALLOWED_FILE_NAME.matcher(name).matches()) {
-          continue;
-        }
+        buf.append("<li><a href=\"")
+                .append(name)
+                .append("\">")
+                .append(name)
+                .append("/</a></li>\r\n");
+      }
+      if (!directories.isEmpty()) {
+        buf.append("<br/>\r\n");
+      }
 
+      for (File f : files) {
+        String name = f.getName();
         buf.append("<li><a href=\"")
           .append(name)
           .append("\">")
@@ -495,6 +510,9 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
       String fileExt = file.getPath().substring(dot_pos + 1);
       if (fileExt.equals("mp4")) {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "video/mp4");
+        return;
+      } else if (fileExt.equals("log")) {
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
         return;
       }
     }

@@ -7,6 +7,8 @@ import com.google.common.base.Charsets;
 import com.google.common.io.Resources;
 import com.helium.ingestor.config.Config;
 import java.io.File;
+
+import com.helium.ingestor.videoservice.HttpStaticFileServer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -44,7 +46,23 @@ public class Main {
                     config = mapper.readValue(resourceStr, Config.class);
                 }
 
+                File videoFolder = new File(config.videoFeedFolder());
+                if (!videoFolder.exists()) {
+                    videoFolder.mkdirs();
+                }
+
+                HttpStaticFileServer videoServer = null;
+                if (config.videoService() != null) {
+                    videoServer = new HttpStaticFileServer();
+                    videoServer.startServer(videoFolder, false, config.videoService().port());
+                }
+
+                //This will block
                 HeliumIngestorService.run(config);
+
+                if (videoServer != null) {
+                    videoServer.stopServer();
+                }
             } else {
                 System.out.println("Please specify config name");
 

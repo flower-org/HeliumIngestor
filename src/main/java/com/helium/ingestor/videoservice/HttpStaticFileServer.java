@@ -25,37 +25,42 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.handler.ssl.SslContext;
 
+import javax.annotation.Nullable;
 import java.io.File;
 
 public final class HttpStaticFileServer {
+  @Nullable EventLoopGroup bossGroup;
+  @Nullable EventLoopGroup workerGroup;
 
   public static void main(String[] args) throws Exception {
-    File rootFolder = new File("/home/john/cm");
-    startServer(rootFolder, false, 8080);
+    File rootFolder = new File("/home/john");
+    HttpStaticFileServer staticFileServer = new HttpStaticFileServer();
+    try {
+      Channel ch = staticFileServer.startServer(rootFolder, false, 8080);
+      ch.closeFuture().sync();
+    } finally {
+      staticFileServer.stopServer();
+    }
   }
 
-  public static void startServer(File rootFolder, boolean ssl, int port) throws Exception {
+  public Channel startServer(File rootFolder, boolean ssl, int port) throws Exception {
     // Configure SSL.
     final SslContext sslCtx = ServerUtil.buildSslContext();
 
     EventLoopGroup bossGroup = new NioEventLoopGroup();
     EventLoopGroup workerGroup = new NioEventLoopGroup();
-    try {
-      ServerBootstrap b = new ServerBootstrap();
-      b.group(bossGroup, workerGroup)
-        .channel(NioServerSocketChannel.class)
-        .handler(new LoggingHandler(LogLevel.INFO))
-        .childHandler(new HttpStaticFileServerInitializer(sslCtx, rootFolder));
 
-      Channel ch = b.bind(port).sync().channel();
+    ServerBootstrap b = new ServerBootstrap();
+    b.group(bossGroup, workerGroup)
+      .channel(NioServerSocketChannel.class)
+      .handler(new LoggingHandler(LogLevel.DEBUG))
+      .childHandler(new HttpStaticFileServerInitializer(sslCtx, rootFolder));
 
-      System.err.println("Open your web browser and navigate to " +
-        (ssl ? "https" : "http") + "://127.0.0.1:" + port + '/');
+     return b.bind(port).sync().channel();
+  }
 
-      ch.closeFuture().sync();
-    } finally {
-      bossGroup.shutdownGracefully();
-      workerGroup.shutdownGracefully();
-    }
+  public void stopServer() throws Exception {
+    if (bossGroup != null) { bossGroup.shutdownGracefully(); }
+    if (workerGroup != null) { workerGroup.shutdownGracefully(); }
   }
 }

@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.util.List;
 import org.immutables.value.Value;
 
+import javax.annotation.Nullable;
+
 @Value.Immutable
 @JsonSerialize(as = ImmutableConfig.class)
 @JsonDeserialize(as = ImmutableConfig.class)
@@ -42,6 +44,17 @@ public interface Config {
         Credentials credentials();
     }
 
+    @Value.Immutable
+    @JsonSerialize(as = ImmutableVideoService.class)
+    @JsonDeserialize(as = ImmutableVideoService.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    interface VideoService {
+        //TODO: ssl parameters
+
+        @JsonProperty
+        int port();
+    }
+
     @JsonProperty
     String videoFeedFolder();
     @JsonProperty
@@ -52,15 +65,8 @@ public interface Config {
     @Value.Default
     @JsonProperty
     default Long socketTimeout_us() { return 1000000L; }
+
+    @JsonProperty
+    @Nullable
+    VideoService videoService();
 }
-
-//nohup ffmpeg -i "rtsp://username:password@192.168.1.18/Preview_01_main" -c copy -map 0 -segment_time 00:00:01 -reset_timestamps 1 -strftime 1 -f segment 6/video_%Y-%m-%d_%H_%M_%S.mp4
-
-//"nohup ffmpeg -i \"rtsp://username:password@192.168.1.18/Preview_01_main\" -c copy -map 0 -segment_time 00:00:01 -reset_timestamps 1 -strftime 1 -f segment 6/video_%Y-%m-%d_%H_%M_%S.mp4"
-
-/*
-    /sbin/vbetool dpms off
-    read ans
-    /sbin/vbetool dpms on
-    vlock
-*/
