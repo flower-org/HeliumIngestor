@@ -199,7 +199,7 @@ public class VideoChunkManagerFlow {
                             return FuturesTool.tryCatch(
                                     loadDurationFlowFuture.getFuture(),
                                     flowRet -> {
-                                        if (chunkInfo.durationLoadException == null) {
+                                        if (flowRet.durationException == null) {
                                             chunkInfo.chunkState = ChunkState.DURATION_LOADED;
                                             chunkInfo.chunkDuration = flowRet.durationSeconds;
                                             chunkInfo.fileLength = chunkFile.length();
