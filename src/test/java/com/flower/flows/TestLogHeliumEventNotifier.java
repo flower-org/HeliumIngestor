@@ -13,7 +13,10 @@ public class TestLogHeliumEventNotifier implements HeliumEventNotifier {
     final static Logger LOGGER = LoggerFactory.getLogger(TestLogHeliumEventNotifier.class);
 
     @Override
-    public void notifyEvent(Long startUnixTimeMs, Long endUnixTimeMs, HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
-        LOGGER.warn("!!!EVENT!!! {}", getEventMessageStr(startUnixTimeMs, endUnixTimeMs, eventType, cameraName, eventTitle, eventDetails));
+    public void notifyEvent(Long eventReportTime, String eventReporter, Long startUnixTimeMs, Long endUnixTimeMs,
+                            HeliumEventType eventType, @Nullable String cameraName, String eventTitle,
+                            @Nullable String eventDetails) {
+        LOGGER.warn("!!!EVENT!!! {}", getEventMessageStr(eventReportTime, eventReporter, startUnixTimeMs, endUnixTimeMs,
+                eventType, cameraName, eventTitle, eventDetails));
     }
 }

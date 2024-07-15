@@ -34,6 +34,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
+import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
 import static com.helium.ingestor.flows.CameraProcessRunnerFlow.readString;
 
 @FlowType(firstStep = "LAUNCH_PROCESS")
@@ -58,6 +59,7 @@ public class LoadChunkDurationFlow {
     @State int attempt = 1;
 
     @State @Nullable Double durationSeconds;
+    @State @Nullable Throwable durationException;
 
     public LoadChunkDurationFlow(String cameraName, String videoChunkFileName, HeliumEventNotifier heliumEventNotifier) {
         this.cameraName = cameraName;
@@ -138,11 +140,12 @@ public class LoadChunkDurationFlow {
     }
 
     @SimpleStepFunction
-    public static ListenableFuture<Transition> PARSE_OUTPUT(
+    public static Transition PARSE_OUTPUT(
             @In(throwIfNull = true) Process process,
             @In StringBuilder stdoutOutput,
             @In StringBuilder stderrOutput,
-            @Out OutPrm<Double> durationSeconds,
+            @Out(out = Output.OPTIONAL) OutPrm<Double> durationSeconds,
+            @Out(out = Output.OPTIONAL) OutPrm<Throwable> durationException,
 
             @In int attempt,
             @In String cameraName,
@@ -158,7 +161,6 @@ public class LoadChunkDurationFlow {
                 Double durationSecondsVal = Double.parseDouble(durationSecondsStr);
 
                 durationSeconds.setOutValue(durationSecondsVal);
-                return Futures.immediateFuture(END);
             } catch (Exception e) {
                 sendFailedToReadVideoChunkEvent(
                     attempt,
@@ -170,7 +172,7 @@ public class LoadChunkDurationFlow {
                     stdoutOutput.toString(),
                     stderrOutput.toString()
                 );
-                return Futures.immediateFailedFuture(e);
+                durationException.setOutValue(e);
             }
         } else {
             String stderr = stderrOutput.toString();
@@ -184,8 +186,9 @@ public class LoadChunkDurationFlow {
                     stdoutOutput.toString(),
                     stderr
             );
-            return Futures.immediateFailedFuture(new Exception(stderr));
+            durationException.setOutValue(new Exception(stderr));
         }
+        return END;
     }
 
     // ----------------------------------------------------------------------------
@@ -220,11 +223,11 @@ public class LoadChunkDurationFlow {
         try {
             long chunkUnixTime = getChunkUnixTime(videoChunkFileName);
             //We try to time this event accordingly to the time of the chunk we're trying to read, which can be read from chunk filename
-            heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.VIDEO_CHUNK_NOT_READABLE, cameraName,
-                    eventTitle, eventDetails);
+            heliumEventNotifier.notifyEvent(System.currentTimeMillis(), HELIUM_INGESTOR, chunkUnixTime,
+                    HeliumEventType.VIDEO_CHUNK_NOT_READABLE, cameraName, eventTitle, eventDetails);
         } catch (Exception e) {
             //Or if that fails, current time
-            heliumEventNotifier.notifyEvent(HeliumEventType.VIDEO_CHUNK_NOT_READABLE, cameraName,
+            heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.VIDEO_CHUNK_NOT_READABLE, cameraName,
                     eventTitle, eventDetails);
         }
     }

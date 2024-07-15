@@ -35,12 +35,10 @@ public interface Config {
         @JsonProperty
         String name();
         @JsonProperty
-        String hostname();
-        @Value.Default
-        @JsonProperty
-        default CameraType type() { return CameraType.DEFAULT; }
+        String rtspUrl();
 
         @JsonProperty
+        @Nullable
         Credentials credentials();
     }
 

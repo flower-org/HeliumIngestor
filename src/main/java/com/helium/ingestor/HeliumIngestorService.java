@@ -15,6 +15,8 @@ import java.io.File;
 import java.util.concurrent.ExecutionException;
 
 public class HeliumIngestorService {
+    public static final String HELIUM_INGESTOR = "HeliumIngestor";
+
     public static void run(Config config) throws ExecutionException, InterruptedException {
         if (config.cameras() == null || config.cameras().isEmpty()) {
             throw new IllegalArgumentException("Cameras not set");
@@ -24,7 +26,7 @@ public class HeliumIngestorService {
                 new DatedFileHeliumEventNotifier(new File(new File(config.videoFeedFolder()), "events"));
 
         String eventTitleStarting = "Starting HELIUM INGESTOR.";
-        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+        heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
                 eventTitleStarting, eventTitleStarting);
 
         Flower flower = new Flower();
@@ -49,7 +51,7 @@ public class HeliumIngestorService {
 
         String eventTitleStarted = "HELIUM INGESTOR started.";
         String eventDetailsStarted = String.format("%s Main flow: [%s]", eventTitleStarted, flowFuture.getFlowId());
-        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+        heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
                 eventTitleStarted, eventDetailsStarted);
 
         // Wait until main flow is over (not going to happen, probably)
@@ -57,13 +59,13 @@ public class HeliumIngestorService {
 
         String eventTitleShuttingDown = "HELIUM INGESTOR shutting down.";
         String eventDetailsShuttingDown = String.format("%s Main flow done: [%s]", eventTitleShuttingDown, flowFuture.getFlowId());
-        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+        heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
                 eventTitleShuttingDown, eventDetailsShuttingDown);
 
         flower.shutdownScheduler();
 
         String eventTitleShutdown = "HELIUM INGESTOR shut down.";
-        heliumEventNotifier.notifyEvent(HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
+        heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.HELIUM_INGESTOR_PROCESS, null,
                 eventTitleShutdown, eventTitleShutdown);
     }
 }

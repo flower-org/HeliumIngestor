@@ -12,6 +12,7 @@ import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
 import javax.annotation.Nullable;
 
+import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
 import static com.helium.ingestor.flows.events.FlowTerminationEvent.getStackTraceAsString;
 
 /** Don't forget to call FlowExceptionEvent.setNOTIFIER(...) before use */
@@ -29,7 +30,6 @@ public class FlowExceptionEvent {
         String eventTitle = String.format("!!!FLOW EXCEPTION!!! Flow id [%s] name [%s] type [%s]",
                 flowInfo.flowId(), flowInfo.flowType(), flowInfo.flowName());
         String message = String.format("Flow crashed with exception! Flow: %s. Exception %s", flowInfo, getStackTraceAsString(e));
-        NOTIFIER.notifyEvent(HeliumEventType.FLOW_EXCEPTION, null,
-                eventTitle, message);
+        NOTIFIER.notifyEvent(HELIUM_INGESTOR, HeliumEventType.FLOW_EXCEPTION, null, eventTitle, message);
     }
 }

@@ -32,19 +32,20 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
         }
     }
 
-    public static String getEventMessageStr(Long startUnixTimeMillis, Long endUnixTimeMillis, HeliumEventType eventType, @Nullable String cameraName,
+    public static String getEventMessageStr(Long eventReportTime, String eventReporter, Long startUnixTimeMillis, Long endUnixTimeMillis, HeliumEventType eventType, @Nullable String cameraName,
                                             String eventTitle, @Nullable String eventDetails) {
         LocalDateTime startEventDateTime = Instant.ofEpochMilli(startUnixTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
         LocalDateTime endEventDateTime = Instant.ofEpochMilli(endUnixTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
         String startEventDateTimeStr = startEventDateTime.format(DATE_TIME_FORMATTER);
         String endEventDateTimeStr = endEventDateTime.format(DATE_TIME_FORMATTER);
+        LocalDateTime eventReportDateTime = Instant.ofEpochMilli(eventReportTime).atZone(ZoneId.systemDefault()).toLocalDateTime();
 
         if (startEventDateTimeStr.equals(endEventDateTimeStr)) {
-            return String.format("Camera [%s]: [%s]. Time: [%s]; [%s]:\n\t%s",
-                    cameraName, eventType, startEventDateTimeStr, eventTitle, eventDetails);
+            return String.format("Camera [%s]: [%s]. Time: [%s]; Report time: [%s]; Reporter: [%s]; [%s]:\n\t%s",
+                    cameraName, eventType, startEventDateTimeStr, eventReportDateTime, eventReporter, eventTitle, eventDetails);
         } else {
-            return String.format("Camera [%s]: [%s]. From: [%s]-[%s]; [%s]:\n\t%s",
-                    cameraName, eventType, startEventDateTimeStr, endEventDateTimeStr, eventTitle, eventDetails);
+            return String.format("Camera [%s]: [%s]. From: [%s]-[%s]; Report time: [%s]; Reporter: [%s]; [%s]:\n\t%s",
+                    cameraName, eventType, startEventDateTimeStr, endEventDateTimeStr, eventReportDateTime, eventReporter, eventTitle, eventDetails);
         }
     }
 
@@ -65,8 +66,10 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
     }
 
     @Override
-    public void notifyEvent(Long startUnixTimeMs, Long endUnixTimeMs, HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
-        String eventMessage = getEventMessageStr(startUnixTimeMs, endUnixTimeMs, eventType, cameraName, eventTitle, eventDetails);
+    public void notifyEvent(Long eventReportTime, String eventReporter, Long startUnixTimeMs, Long endUnixTimeMs,
+                            HeliumEventType eventType, @Nullable String cameraName, String eventTitle, @Nullable String eventDetails) {
+        String eventMessage = getEventMessageStr(eventReportTime, eventReporter, startUnixTimeMs, endUnixTimeMs,
+                eventType, cameraName, eventTitle, eventDetails);
         LOGGER.warn("!!!EVENT!!! {}", eventMessage);
         try {
             String timestamp = LocalDateTime.now().format(DATE_TIME_FORMATTER);

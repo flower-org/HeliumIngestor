@@ -1,6 +1,7 @@
 package com.helium.ingestor.flows;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
 import static com.helium.ingestor.flows.LoadChunkDurationFlow.*;
 import static com.helium.ingestor.flows.MergeChunkSubRangeFlow.getRenameFileName;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkInfo;
@@ -120,8 +121,8 @@ public class AnalyzeAndMergeChunkRangeFlow {
                     String eventTitle = String.format("Video chunk file size mismatch. File [%s]", chunkFile.getName());
                     String eventDetails = String.format("Video chunk file size mismatch. File [%s] Old length [%s] New length [%s]",
                             chunkFile.getName(), chunkInfo.fileLength, chunkFile.length());
-                    heliumEventNotifier.notifyEvent(chunkUnixTime, HeliumEventType.VIDEO_CHUNK_FILE_SIZE_MISMATCH, cameraName,
-                            eventTitle, eventDetails);
+                    heliumEventNotifier.notifyEvent(System.currentTimeMillis(), HELIUM_INGESTOR, chunkUnixTime,
+                            HeliumEventType.VIDEO_CHUNK_FILE_SIZE_MISMATCH, cameraName, eventTitle, eventDetails);
                 }
                 /*if (shaMismatch) {
                     String eventTitle = String.format("Video chunk file checksum mismatch. File [%s]", chunkFile.getName());
@@ -270,7 +271,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
               // Pre-existing output file about to be renamed, throw event
               String eventTitleRename = String.format("Renaming pre-existing merge output file: [%s], renaming to [%s]",
                       outputZipFile.getAbsolutePath(), renameFilename.getAbsolutePath());
-              heliumEventNotifier.notifyEvent(HeliumEventType.FOUND_PRE_EXISTING_MERGE_OUTPUT_FILE, cameraName,
+              heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.FOUND_PRE_EXISTING_MERGE_OUTPUT_FILE, cameraName,
                       eventTitleRename, eventTitleRename);
 
               outputZipFile.renameTo(renameFilename);
@@ -311,7 +312,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
 
         long wmUnixTime = toUnixTime(currentRangeWm);
         long chunkUnixTime = getChunkUnixTime(chunkInfoAfterGap.chunkFile.getName());
-        heliumEventNotifier.notifyEvent(wmUnixTime, chunkUnixTime, HeliumEventType.GAP_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
+        heliumEventNotifier.notifyEvent(System.currentTimeMillis(), HELIUM_INGESTOR, wmUnixTime, chunkUnixTime, HeliumEventType.GAP_IN_FOOTAGE, cameraName, eventTitle, eventDetails);
 
         Duration rangeDuration = getRangeDuration(currentRange, lastChunk).plus(secondsAsDoubleToDuration(checkNotNull(lastChunk.chunkDuration)));
         notifySurplusReport(cameraName, currentRange, chunkInfoAfterGap, heliumEventNotifier, rangeDuration, actualDuration);

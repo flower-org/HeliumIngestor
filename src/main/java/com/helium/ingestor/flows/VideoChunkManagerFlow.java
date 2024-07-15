@@ -64,7 +64,7 @@ public class VideoChunkManagerFlow {
 
         ChunkState chunkState;
         @Nullable Double chunkDuration = null;
-        @Nullable Exception durationLoadException = null;
+        @Nullable Throwable durationLoadException = null;
         @Nullable Long fileLength = null;
         @Nullable byte[] checksum = null;
 
@@ -199,12 +199,19 @@ public class VideoChunkManagerFlow {
                             return FuturesTool.tryCatch(
                                     loadDurationFlowFuture.getFuture(),
                                     flowRet -> {
-                                        chunkInfo.chunkState = ChunkState.DURATION_LOADED;
-                                        chunkInfo.chunkDuration = flowRet.durationSeconds;
-                                        chunkInfo.fileLength = chunkFile.length();
-                                        //chunkInfo.checksum = getChecksumForFile(chunkFile);
+                                        if (chunkInfo.durationLoadException == null) {
+                                            chunkInfo.chunkState = ChunkState.DURATION_LOADED;
+                                            chunkInfo.chunkDuration = flowRet.durationSeconds;
+                                            chunkInfo.fileLength = chunkFile.length();
+                                            //chunkInfo.checksum = getChecksumForFile(chunkFile);
 
-                                        return ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1));
+                                            return ATTEMPT_TO_MERGE_CHUNKS.setDelay(Duration.ofMillis(1));
+                                        } else {
+                                            chunkInfo.chunkState = ChunkState.DURATION_LOAD_FAILED;
+                                            chunkInfo.durationLoadException = flowRet.durationException;
+                                            return LOAD_DURATIONS_FROM_CHUNK_FILES.setDelay(Duration.ofMillis(1));
+                                        }
+
                                     },
                                     Exception.class,
                                     e -> {

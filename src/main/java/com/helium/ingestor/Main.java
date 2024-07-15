@@ -8,6 +8,7 @@ import com.google.common.io.Resources;
 import com.helium.ingestor.config.Config;
 import java.io.File;
 
+import com.helium.ingestor.core.DatedFileHeliumEventNotifier;
 import com.helium.ingestor.videoservice.HttpStaticFileServer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -15,8 +16,12 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Main {
+    final static Logger LOGGER = LoggerFactory.getLogger(Main.class);
+
     static final String CONFIG_OPTION_NAME = "config";
     static final String HELIUM_INGESTOR_APP_NAME = "HeliumIngestor";
 
@@ -51,17 +56,20 @@ public class Main {
                     videoFolder.mkdirs();
                 }
 
-                HttpStaticFileServer videoServer = null;
+                HttpStaticFileServer videoService = null;
                 if (config.videoService() != null) {
-                    videoServer = new HttpStaticFileServer();
-                    videoServer.startServer(videoFolder, false, config.videoService().port());
+                    int videoServicePort = config.videoService().port();
+                    LOGGER.info("Starting VideoService on port {}", videoServicePort);
+                    videoService = new HttpStaticFileServer();
+                    videoService.startServer(videoFolder, false, videoServicePort);
                 }
 
                 //This will block
                 HeliumIngestorService.run(config);
 
-                if (videoServer != null) {
-                    videoServer.stopServer();
+                if (videoService != null) {
+                    LOGGER.info("Stopping VideoService");
+                    videoService.stopServer();
                 }
             } else {
                 System.out.println("Please specify config name");

@@ -47,6 +47,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
 
 // TODO: DRY With LoadChunkDurationFlow
 @FlowType(firstStep = "INIT_PROCESS")
@@ -126,7 +127,7 @@ public class MergeChunkSubRangeFlow {
             // Pre-existing output file about to be renamed, throw event
             String eventTitleRename = String.format("Renaming pre-existing merge output file: [%s], renaming to [%s]",
                     outputFileVal.getAbsolutePath(), renameTo.getAbsolutePath());
-            heliumEventNotifier.notifyEvent(HeliumEventType.FOUND_PRE_EXISTING_MERGE_OUTPUT_FILE, cameraName,
+            heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.FOUND_PRE_EXISTING_MERGE_OUTPUT_FILE, cameraName,
                     eventTitleRename, eventTitleRename);
 
             outputFileVal.renameTo(renameTo);
@@ -294,11 +295,11 @@ public class MergeChunkSubRangeFlow {
         try {
             long endOfRangeUnixTime = toUnixTime(endOfRange);
             //We try to time this event accordingly to the end of merge range time
-            heliumEventNotifier.notifyEvent(endOfRangeUnixTime, HeliumEventType.VIDEO_MERGING_FAILED, cameraName,
+            heliumEventNotifier.notifyEvent(System.currentTimeMillis(), HELIUM_INGESTOR, endOfRangeUnixTime, HeliumEventType.VIDEO_MERGING_FAILED, cameraName,
                     eventTitle, eventDetails);
         } catch (Exception e) {
             //Or if that fails, current time
-            heliumEventNotifier.notifyEvent(HeliumEventType.VIDEO_MERGING_FAILED, cameraName,
+            heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.VIDEO_MERGING_FAILED, cameraName,
                     eventTitle, eventDetails);
         }
     }

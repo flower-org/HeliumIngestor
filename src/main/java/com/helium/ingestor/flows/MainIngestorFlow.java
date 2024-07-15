@@ -14,10 +14,11 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
-import com.helium.ingestor.config.CameraType;
 import com.helium.ingestor.config.Config;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import java.io.File;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,14 +29,6 @@ import org.slf4j.LoggerFactory;
 @FlowType(firstStep = "LOAD_CAMERAS_FROM_CONFIG")
 public class MainIngestorFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(MainIngestorFlow.class);
-
-    static final String DEFAULT_RTSP_URL_PATTERN = "rtsp://%s:%s@%s";
-    static final String REOLINK_RTSP_URL_PATTERN = "rtsp://%s:%s@%s/Preview_01_main";
-
-    static final Map<CameraType, String> RTSP_URL_PATTERN_MAP = Map.of(
-            CameraType.DEFAULT, DEFAULT_RTSP_URL_PATTERN,
-            CameraType.REOLINK, REOLINK_RTSP_URL_PATTERN
-    );
 
     static final String FFMPEG_RTSP_CMD_PATTERN =
             "ffmpeg -i %s -c copy -map 0 -timeout %d -segment_time 00:00:01" +
@@ -56,13 +49,21 @@ public class MainIngestorFlow {
     public static Transition LOAD_CAMERAS_FROM_CONFIG(
             @In Config config,
             @In Map<String, String> cameraNameToCmdMap,
-            @StepRef Transition RUN_CHILD_FLOWS) {
+            @StepRef Transition RUN_CHILD_FLOWS) throws MalformedURLException {
         for (Config.Camera camera : config.cameras()) {
-            String rtspUrlPattern = RTSP_URL_PATTERN_MAP.get(camera.type());
-            String rtspUrl = String.format(rtspUrlPattern,
-                    camera.credentials().username(), camera.credentials().password(), camera.hostname());
+            String rtspUrlNoCreds = camera.rtspUrl();
+            URL url = new URL(rtspUrlNoCreds);
+            if (camera.credentials() != null) {
+                //Add RTSP credentials if specified
+                Config.Camera.Credentials creds = camera.credentials();
+                url = new URL(url.getProtocol(),
+                        String.format("%s:%s@%s", creds.username(), creds.password(), url.getHost()),
+                        url.getPort(),
+                        url.getFile());
+            }
+
             String ffmpegRtspCommand = String.format(FFMPEG_RTSP_CMD_PATTERN,
-                    rtspUrl, config.socketTimeout_us(),
+                    url, config.socketTimeout_us(),
                     config.videoFeedFolder(), camera.name());
 
             cameraNameToCmdMap.put(camera.name(), ffmpegRtspCommand);

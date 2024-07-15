@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
 
 @FlowType(firstStep = "LAUNCH_PROCESS")
 public class CameraProcessRunnerFlow {
@@ -104,7 +105,7 @@ public class CameraProcessRunnerFlow {
             return LAUNCH_PROCESS.setDelay(Duration.ofMillis(delay));
         } else {
             String eventTitle = String.format("Camera process started (ffmpeg). pid [%s]", checkNotNull(process).pid());
-            heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_STARTED, cameraName,
+            heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.CAMERA_PROCESS_STARTED, cameraName,
                     eventTitle, null);
             return READ_PROCESS_OUTPUT;
         }
@@ -137,7 +138,7 @@ public class CameraProcessRunnerFlow {
                     //Then Forcibly kill process
                     String eventTitle = String.format("Killing process forcibly due to absence of output. pid [%s]", process.pid());
                     LOGGER.warn(eventTitle);
-                    heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName,
+                    heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName,
                             eventTitle, lastLogLines.toString());
 
                     process.destroyForcibly();
@@ -178,7 +179,7 @@ public class CameraProcessRunnerFlow {
             String processTerminationSummary = String.format(
                     "Process terminated with exit value: %d; restarting. Process alias: %s Attempt #%d; Delay time: %s",
                     process.exitValue(), cameraName, retryInfo.failedLaunchRetries, delayDuration);
-            heliumEventNotifier.notifyEvent(HeliumEventType.CAMERA_PROCESS_TERMINATED,
+            heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.CAMERA_PROCESS_TERMINATED,
                     eventTitle, processTerminationSummary, lastLogLines.toString());
 
             return LAUNCH_PROCESS.setDelay(delayDuration);

@@ -13,6 +13,8 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import javax.annotation.Nullable;
 
+import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
+
 /** Don't forget to call FlowTerminationEvent.setNOTIFIER(...) before use */
 @EventProfileContainer
 public class FlowTerminationEvent {
@@ -27,7 +29,7 @@ public class FlowTerminationEvent {
         String eventTitle = String.format("!!!FLOW FINISHED!!! Flow id [%s] name [%s] type [%s]",
                 flowInfo.flowId(), flowInfo.flowType(), flowInfo.flowName());
         String message = String.format("Flow terminated normally. Flow: %s.", flowInfo);
-        NOTIFIER.notifyEvent(HeliumEventType.FLOW_SHUTDOWN, null, eventTitle, message);
+        NOTIFIER.notifyEvent(HELIUM_INGESTOR, HeliumEventType.FLOW_SHUTDOWN, null, eventTitle, message);
     }
 
     public static String getStackTraceAsString(Throwable throwable) {
