@@ -14,24 +14,24 @@ import javax.annotation.Nullable;
 @JsonDeserialize(as = ImmutableConfig.class)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public interface Config {
+    /** Username / password creds */
+    @Value.Immutable
+    @JsonSerialize(as = ImmutableCredentials.class)
+    @JsonDeserialize(as = ImmutableCredentials.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    interface Credentials {
+        @JsonProperty
+        String username();
+        @JsonProperty
+        String password();
+    }
+
     /** RTSP camera */
     @Value.Immutable
     @JsonSerialize(as = ImmutableCamera.class)
     @JsonDeserialize(as = ImmutableCamera.class)
     @JsonInclude(JsonInclude.Include.NON_NULL)
     interface Camera {
-        /** RTSP creds */
-        @Value.Immutable
-        @JsonSerialize(as = ImmutableCredentials.class)
-        @JsonDeserialize(as = ImmutableCredentials.class)
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        interface Credentials {
-            @JsonProperty
-            String username();
-            @JsonProperty
-            String password();
-        }
-
         @JsonProperty
         String name();
         @JsonProperty
@@ -51,6 +51,10 @@ public interface Config {
 
         @JsonProperty
         int port();
+
+        @JsonProperty
+        @Nullable
+        Credentials credentials();
     }
 
     @JsonProperty

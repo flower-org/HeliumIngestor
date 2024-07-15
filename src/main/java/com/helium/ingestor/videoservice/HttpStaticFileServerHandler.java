@@ -15,6 +15,8 @@ package com.helium.ingestor.videoservice;
  * under the License.
  */
 
+import com.google.common.io.ByteSource;
+import com.google.common.io.Resources;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -46,13 +48,13 @@ import javax.activation.MimetypesFileTypeMap;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.List;
@@ -144,6 +146,11 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
 
     final boolean keepAlive = HttpUtil.isKeepAlive(request);
     final String uri = request.uri();
+    if (uri.equals("/folder.svg")) {
+      sendResource(ctx, "folder.svg");
+      return;
+    }
+
     final String path = sanitizeUri(root, uri);
     if (path == null) {
       sendError(ctx, FORBIDDEN);
@@ -201,7 +208,7 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
     if (!headersGotRange) {
       HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
       HttpUtil.setContentLength(response, fileLength);
-      setContentTypeHeader(response, file);
+      setContentTypeHeader(response, file.getPath());
       setDateAndCacheHeaders(response, file);
 
       if (!keepAlive) {
@@ -256,7 +263,7 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
       response.headers().set(CONTENT_RANGE, "bytes " + startPos + "-" + endPos + "/" + fileLength);
       response.headers().set(ACCEPT_RANGES, "bytes");
 
-      setContentTypeHeader(response, file);
+      setContentTypeHeader(response, file.getPath());
       setDateAndCacheHeaders(response, file);
 
       if (!keepAlive) {
@@ -375,7 +382,7 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
 
       for (File f : directories) {
         String name = f.getName();
-        buf.append("<li><a href=\"")
+        buf.append("<li><img src=\"/folder.svg\" alt=\"Folder\" width=\"16\" height=\"16\">&nbsp;<a href=\"")
                 .append(name)
                 .append("\">")
                 .append(name)
@@ -402,6 +409,19 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
 
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, OK, buffer);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/html; charset=UTF-8");
+
+    sendAndCleanupConnection(ctx, response);
+  }
+
+  private void sendResource(ChannelHandlerContext ctx, String resourceName) throws IOException {
+    ByteSource byteSource = Resources.asByteSource(Resources.getResource(resourceName));
+    byte[] bytes = byteSource.read();
+
+    ByteBuf buffer = ctx.alloc().buffer(bytes.length);
+    buffer.writeBytes(bytes);
+
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, OK, buffer);
+    setContentTypeHeader(response, resourceName);
 
     sendAndCleanupConnection(ctx, response);
   }
@@ -501,23 +521,26 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
    *
    * @param response
    *            HTTP response
-   * @param file
+   * @param filePath
    *            file to extract content type
    */
-  private static void setContentTypeHeader(HttpResponse response, File file) {
-    int dot_pos = file.getPath().lastIndexOf(".");
+  private static void setContentTypeHeader(HttpResponse response, String filePath) {
+    int dot_pos = filePath.lastIndexOf(".");
     if (dot_pos >= 0) {
-      String fileExt = file.getPath().substring(dot_pos + 1);
+      String fileExt = filePath.substring(dot_pos + 1);
       if (fileExt.equals("mp4")) {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "video/mp4");
         return;
       } else if (fileExt.equals("log")) {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
         return;
+      } else if (fileExt.equals("svg")) {
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "image/svg+xml");
+        return;
       }
     }
 
     MimetypesFileTypeMap mimeTypesMap = new MimetypesFileTypeMap();
-    response.headers().set(HttpHeaderNames.CONTENT_TYPE, mimeTypesMap.getContentType(file.getPath()));
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, mimeTypesMap.getContentType(filePath));
   }
 }

@@ -15,6 +15,7 @@ package com.helium.ingestor.videoservice;
  * under the License.
  */
 
+import com.helium.ingestor.config.Config;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
@@ -43,18 +44,19 @@ public final class HttpStaticFileServer {
       this.workerGroupThreadCount = workerGroupThreadCount;
     }
 
-    public static void main(String[] args) throws Exception {
+  public static void main(String[] args) throws Exception {
     File rootFolder = new File("/home/john");
     HttpStaticFileServer staticFileServer = new HttpStaticFileServer(1, 1);
     try {
-      Channel ch = staticFileServer.startServer(rootFolder, false, 8080);
+      Channel ch = staticFileServer.startServer(rootFolder, false, 8080, null);
       ch.closeFuture().sync();
     } finally {
       staticFileServer.stopServer();
     }
   }
 
-  public Channel startServer(File rootFolder, boolean ssl, int port) throws Exception {
+  public Channel startServer(File rootFolder, boolean ssl, int port,
+                             @Nullable Config.Credentials credentials) throws Exception {
     // Configure SSL.
     final SslContext sslCtx = ServerUtil.buildSslContext();
 
@@ -65,7 +67,7 @@ public final class HttpStaticFileServer {
     b.group(bossGroup, workerGroup)
       .channel(NioServerSocketChannel.class)
       .handler(new LoggingHandler(LogLevel.DEBUG))
-      .childHandler(new HttpStaticFileServerInitializer(sslCtx, rootFolder));
+      .childHandler(new HttpStaticFileServerInitializer(sslCtx, rootFolder, credentials));
 
      return b.bind(port).sync().channel();
   }

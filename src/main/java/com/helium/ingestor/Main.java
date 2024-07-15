@@ -61,7 +61,8 @@ public class Main {
                     int videoServicePort = config.videoService().port();
                     LOGGER.info("Starting VideoService on port {}", videoServicePort);
                     videoService = new HttpStaticFileServer();
-                    videoService.startServer(videoFolder, false, videoServicePort);
+                    videoService.startServer(videoFolder, false, videoServicePort,
+                                             config.videoService().credentials());
                 }
 
                 //This will block

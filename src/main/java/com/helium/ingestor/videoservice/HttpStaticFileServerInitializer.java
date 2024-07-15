@@ -15,6 +15,7 @@ package com.helium.ingestor.videoservice;
  * under the License.
  */
 
+import com.helium.ingestor.config.Config;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
@@ -31,10 +32,13 @@ public class HttpStaticFileServerInitializer extends ChannelInitializer<SocketCh
   @Nullable
   private final SslContext sslCtx;
   private final File rootFolder;
+  @Nullable private final Config.Credentials credentials;
 
-  public HttpStaticFileServerInitializer(@Nullable SslContext sslCtx, File rootFolder) {
+  public HttpStaticFileServerInitializer(@Nullable SslContext sslCtx, File rootFolder,
+                                         @Nullable Config.Credentials credentials) {
     this.sslCtx = sslCtx;
     this.rootFolder = rootFolder;
+    this.credentials = credentials;
   }
 
   @Override
@@ -46,6 +50,9 @@ public class HttpStaticFileServerInitializer extends ChannelInitializer<SocketCh
     pipeline.addLast(new HttpServerCodec());
     pipeline.addLast(new HttpObjectAggregator(65536));
     pipeline.addLast(new ChunkedWriteHandler());
+    if (credentials != null) {
+      pipeline.addLast(new HttpBasicAuthHandler(credentials.username(), credentials.password()));
+    }
     pipeline.addLast(new HttpStaticFileServerHandler(rootFolder));
   }
 }

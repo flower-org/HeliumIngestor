@@ -18,6 +18,8 @@ import com.helium.ingestor.config.Config;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import java.io.File;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,17 +51,20 @@ public class MainIngestorFlow {
     public static Transition LOAD_CAMERAS_FROM_CONFIG(
             @In Config config,
             @In Map<String, String> cameraNameToCmdMap,
-            @StepRef Transition RUN_CHILD_FLOWS) throws MalformedURLException {
+            @StepRef Transition RUN_CHILD_FLOWS) throws URISyntaxException {
         for (Config.Camera camera : config.cameras()) {
             String rtspUrlNoCreds = camera.rtspUrl();
-            URL url = new URL(rtspUrlNoCreds);
+            URI url = new URI(rtspUrlNoCreds);
             if (camera.credentials() != null) {
                 //Add RTSP credentials if specified
-                Config.Camera.Credentials creds = camera.credentials();
-                url = new URL(url.getProtocol(),
-                        String.format("%s:%s@%s", creds.username(), creds.password(), url.getHost()),
+                Config.Credentials creds = camera.credentials();
+                url = new URI(url.getScheme(),
+                        String.format("%s:%s", creds.username(), creds.password()),
+                        url.getHost(),
                         url.getPort(),
-                        url.getFile());
+                        url.getPath(),
+                        url.getQuery(),
+                        url.getFragment());
             }
 
             String ffmpegRtspCommand = String.format(FFMPEG_RTSP_CMD_PATTERN,
