@@ -20,6 +20,7 @@ import com.flower.conf.FlowFactoryPrm;
 import com.flower.conf.FlowFuture;
 import com.flower.conf.InOutPrm;
 import com.flower.conf.Transition;
+import com.flower.utilities.FuturesTool;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -212,11 +213,14 @@ public class AnalyzeAndMergeChunkRangeFlow {
   @SimpleStepFunction
   public static ListenableFuture<Transition> LAUNCH_MERGE_PROCESSES(@In String cameraName,
                                                                    @In List<ChunkRangeInfo> chunksContiguousRanges,
+                                                                   @In List<ChunkInfo> chunksToMerge,
+                                                                   @In Set<ChunkInfo> badChunks,
                                                                    @InOut(throwIfNull=true) InOutPrm<Integer> currentMergeIndex,
                                                                    @FlowFactory(flowType=MergeChunkSubRangeFlow.class) FlowFactoryPrm<MergeChunkSubRangeFlow> flowFactory,
                                                                    @In File outputFolder,
                                                                    @In HeliumEventNotifier heliumEventNotifier,
                                                                    @StepRef Transition LAUNCH_MERGE_PROCESSES,
+                                                                   @StepRef Transition INTEGRITY_CHECK,
                                                                    @StepRef Transition ZIP_BAD_CHUNKS) {
     int mergeIndex = currentMergeIndex.getInValue();
     if (mergeIndex < chunksContiguousRanges.size()) {
@@ -226,10 +230,44 @@ public class AnalyzeAndMergeChunkRangeFlow {
 
         FlowFuture<MergeChunkSubRangeFlow> flowFuture = flowFactory.runChildFlow(mergeChunkSubRangeFlow);
 
-        return Futures.transform(flowFuture.getFuture(),
+        return FuturesTool.tryCatchAsync(flowFuture.getFuture(),
                 ignored_ -> {
                     currentMergeIndex.setOutValue(mergeIndex + 1);
-                    return LAUNCH_MERGE_PROCESSES;
+                    return Futures.immediateFuture(LAUNCH_MERGE_PROCESSES);
+                },
+                Exception.class,
+                e -> {
+                    if (e.getMessage() != null && e.getMessage().contains("Impossible to open")) {
+                        try {
+                            //Extracting chunk filename from error line:
+                            // [concat @ 0x55de3586ad00] Impossible to open '/home/john/cam/septic_main/video_2024-07-15_10_00_17.mp4'
+                            String message = e.getMessage();
+                            message = message.substring(message.indexOf("Impossible to open"));
+
+                            String chunkFilename = message.substring(message.indexOf("'") + 1);
+                            chunkFilename = chunkFilename.substring(0, chunkFilename.indexOf("'"));
+
+                            File badChunkFile = new File(chunkFilename);
+                            if (badChunkFile.exists()) {
+                                for (ChunkInfo badChunk : chunksToMerge) {
+                                    if (badChunk.chunkFile.toPath().equals(badChunkFile.toPath())) {
+                                        // Add problematic chunk to bad chunks
+                                        if (badChunks.add(badChunk)) {
+                                            // Recreate ranges
+                                            chunksContiguousRanges.clear();
+                                            currentMergeIndex.setOutValue(0);
+                                            return Futures.immediateFuture(INTEGRITY_CHECK);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception e1) {
+                            LOGGER.error("Error trying to repair merge failure", e1);
+                        }
+                        return Futures.immediateFailedFuture(e);
+                    } else {
+                        return Futures.immediateFailedFuture(e);
+                    }
                 },
                 MoreExecutors.directExecutor());
     } else {
