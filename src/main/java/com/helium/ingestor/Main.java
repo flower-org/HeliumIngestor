@@ -8,7 +8,6 @@ import com.google.common.io.Resources;
 import com.helium.ingestor.config.Config;
 import java.io.File;
 
-import com.helium.ingestor.core.DatedFileHeliumEventNotifier;
 import com.helium.ingestor.videoservice.HttpStaticFileServer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -16,14 +15,25 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.logging.log4j.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.LogManager;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 public class Main {
     final static Logger LOGGER = LoggerFactory.getLogger(Main.class);
 
     static final String CONFIG_OPTION_NAME = "config";
     static final String HELIUM_INGESTOR_APP_NAME = "HeliumIngestor";
+
+    public static void resetLog4j2Context() {
+        LoggerContext context = (LoggerContext)LogManager.getContext(false);
+        context.reconfigure();
+    }
 
     public static void main(String[] args) {
         // create the command line parser
@@ -54,6 +64,20 @@ public class Main {
                 File videoFolder = new File(config.videoFeedFolder());
                 if (!videoFolder.exists()) {
                     videoFolder.mkdirs();
+                }
+
+                if (!Strings.isBlank(config.log4jFolder())) {
+                    File logsFolder = new File(checkNotNull(config.log4jFolder()));
+                    if (!logsFolder.exists()) {
+                        logsFolder.mkdirs();
+                    }
+                    String fullLogsFolderPaths = logsFolder.getAbsolutePath();
+                    if (!fullLogsFolderPaths.endsWith("/")) {
+                        fullLogsFolderPaths = fullLogsFolderPaths + "/";
+                    }
+
+                    System.setProperty("LOG_FOLDER", fullLogsFolderPaths);
+                    resetLog4j2Context();
                 }
 
                 HttpStaticFileServer videoService = null;

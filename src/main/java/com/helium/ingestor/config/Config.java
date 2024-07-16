@@ -58,7 +58,12 @@ public interface Config {
     }
 
     @JsonProperty
+    @Nullable
+    String log4jFolder();
+
+    @JsonProperty
     String videoFeedFolder();
+
     @JsonProperty
     List<Camera> cameras();
 
