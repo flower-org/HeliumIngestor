@@ -80,4 +80,10 @@ public interface Config {
     @JsonProperty
     @Nullable
     VideoService videoService();
+
+    /** ffmpeg's -timeout parameter (socket timeout in microseconds)
+     * Default 1 second (1000000 us)*/
+    @Value.Default
+    @JsonProperty
+    default boolean debugOutputMergeChunkList() { return false; }
 }

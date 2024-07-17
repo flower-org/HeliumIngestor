@@ -75,6 +75,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
     }
 
     @State final String cameraName;
+    @State final boolean debugOutputMergeChunkList;
     @State final boolean debugRetainChunks;
     @State final File outputFolder;
     @State final HeliumEventNotifier heliumEventNotifier;
@@ -88,12 +89,14 @@ public class AnalyzeAndMergeChunkRangeFlow {
     @State @Nullable int currentMergeIndex;
 
     public AnalyzeAndMergeChunkRangeFlow(String cameraName,
+                                         boolean debugOutputMergeChunkList,
                                          boolean debugRetainChunks,
                                          File outputFolder,
                                          HeliumEventNotifier heliumEventNotifier,
                                          List<ChunkInfo> chunksToMerge,
                                          ChunkInfo nextHourChunk) {
         this.cameraName = cameraName;
+        this.debugOutputMergeChunkList = debugOutputMergeChunkList;
         this.debugRetainChunks = debugRetainChunks;
         this.outputFolder = outputFolder;
         this.heliumEventNotifier = heliumEventNotifier;
@@ -219,6 +222,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
 
   @SimpleStepFunction
   public static ListenableFuture<Transition> LAUNCH_MERGE_PROCESSES(@In String cameraName,
+                                                                   @In boolean debugOutputMergeChunkList,
                                                                    @In List<ChunkRangeInfo> chunksContiguousRanges,
                                                                    @In List<ChunkInfo> chunksToMerge,
                                                                    @In Set<ChunkInfo> badChunks,
@@ -232,7 +236,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
     int mergeIndex = currentMergeIndex.getInValue();
     if (mergeIndex < chunksContiguousRanges.size()) {
         ChunkRangeInfo chunkRangeInfo = chunksContiguousRanges.get(mergeIndex);
-        MergeChunkSubRangeFlow mergeChunkSubRangeFlow = new MergeChunkSubRangeFlow(cameraName, chunkRangeInfo.chunkRange,
+        MergeChunkSubRangeFlow mergeChunkSubRangeFlow = new MergeChunkSubRangeFlow(cameraName, debugOutputMergeChunkList, chunkRangeInfo.chunkRange,
                 chunkRangeInfo.endOfRange, outputFolder, heliumEventNotifier);
 
         FlowFuture<MergeChunkSubRangeFlow> flowFuture = flowFactory.runChildFlow(mergeChunkSubRangeFlow);

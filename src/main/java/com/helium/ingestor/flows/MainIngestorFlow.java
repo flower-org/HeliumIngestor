@@ -121,9 +121,10 @@ public class MainIngestorFlow {
         List<FlowFuture<VideoChunkManagerFlow>> videoChunkManagerFutures = new ArrayList<>();
         for (Map.Entry<String, CommandAndSettings> cameraEntry : cameraNameToCmdMap.entrySet()) {
             String camera = cameraEntry.getKey();
+            boolean debugOutputMergeChunkList = config.debugOutputMergeChunkList();
             boolean debugRetainChunks = cameraEntry.getValue().debugRetainChunks;
             VideoChunkManagerFlow chunkManagerFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera),
-                    camera, debugRetainChunks, heliumEventNotifier);
+                    camera, debugOutputMergeChunkList, debugRetainChunks, heliumEventNotifier);
             videoChunkManagerFutures.add(videoChunkFlowFactory.runChildFlow(chunkManagerFlow));
         }
 

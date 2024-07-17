@@ -64,6 +64,7 @@ public class MergeChunkSubRangeFlow {
     final static Integer MAX_RETRIES = 3;
 
     @State final String cameraName;
+    @State final boolean debugOutputMergeChunkList;
     @State final List<ChunkInfo> chunksToMerge;
     @State final LocalDateTime endOfRange;
     @State final HeliumEventNotifier heliumEventNotifier;
@@ -83,12 +84,23 @@ public class MergeChunkSubRangeFlow {
     @State @Nullable BufferedReader stderr;
     @State int attempt = 1;
 
+    static String formChunkFileContent(List<ChunkInfo> chunksToMerge) {
+        StringBuilder chunksFileContent = new StringBuilder();
+        chunksToMerge.forEach(
+                chunk -> {
+                    chunksFileContent.append(String.format("file '%s'%n", chunk.chunkFile.getAbsolutePath()));
+                });
+        return chunksFileContent.toString();
+    }
+
     public MergeChunkSubRangeFlow(String cameraName,
+                                  boolean debugOutputMergeChunkList,
                                   List<ChunkInfo> chunksToMerge,
                                   LocalDateTime endOfRange,
                                   File outputFolder,
                                   HeliumEventNotifier heliumEventNotifier) {
         this.cameraName = cameraName;
+        this.debugOutputMergeChunkList = debugOutputMergeChunkList;
         this.chunksToMerge = chunksToMerge;
         this.endOfRange = endOfRange;
         this.heliumEventNotifier = heliumEventNotifier;
@@ -134,16 +146,12 @@ public class MergeChunkSubRangeFlow {
         }
 
         // Form merge command
-        StringBuilder chunksFileContent = new StringBuilder();
-        chunksToMerge.forEach(
-            chunk -> {
-                chunksFileContent.append(String.format("file '%s'%n", chunk.chunkFile.getAbsolutePath()));
-            });
+        String chunksFileContent = formChunkFileContent(chunksToMerge);
 
         FileAttribute<Set<PosixFilePermission>> allCanRead = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-r--r--"));
         File chunksFileVal = Files.createTempFile("HeliumIngestor", "-merge-job", allCanRead).toFile();
         try (Writer writer = new OutputStreamWriter(new FileOutputStream(chunksFileVal), StandardCharsets.UTF_8)) {
-            writer.write(chunksFileContent.toString());
+            writer.write(chunksFileContent);
         }
         chunksFile.setOutValue(chunksFileVal);
 
@@ -158,6 +166,7 @@ public class MergeChunkSubRangeFlow {
     @StepFunction(transit = "LAUNCH_PROCESS_TRANSITION")
     public static void LAUNCH_PROCESS(
             @In String command,
+            @In boolean debugOutputMergeChunkList,
             @In List<ChunkInfo> chunksToMerge,
             @Out OutPrm<Process> process,
             @Out OutPrm<BufferedReader> stdout,
@@ -168,7 +177,14 @@ public class MergeChunkSubRangeFlow {
             firstChunk = chunksToMerge.get(0).chunkFile.getName();
             lastChunk = chunksToMerge.get(chunksToMerge.size()-1).chunkFile.getName();
         }
-        LOGGER.info("Merging {} video chunks ({} -> {}). cmd: {}", chunksToMerge.size(), firstChunk, lastChunk, command);
+
+        if (debugOutputMergeChunkList) {
+            String chunksFileContent = formChunkFileContent(chunksToMerge);
+            LOGGER.info("Merging {} video chunks ({} -> {}). cmd: {}\nChunksFile:-----\n{}\n----------------", chunksToMerge.size(),
+                    firstChunk, lastChunk, command, chunksFileContent);
+        } else {
+            LOGGER.info("Merging {} video chunks ({} -> {}). cmd: {}", chunksToMerge.size(), firstChunk, lastChunk, command);
+        }
 
         Process newProcess = Runtime.getRuntime().exec(command);
 

@@ -75,6 +75,7 @@ public class VideoChunkManagerFlow {
     }
 
     @State final String cameraName;
+    @State final boolean debugOutputMergeChunkList;
     @State final boolean debugRetainChunks;
     @State final HeliumEventNotifier heliumEventNotifier;
     @State @Nullable WatchService watcher;
@@ -83,12 +84,14 @@ public class VideoChunkManagerFlow {
     @State final TreeMap<File, ChunkInfo> mergedChunkInfoTreeMap;
     @State @Nullable File archiveDirectoryFile;
 
-    public VideoChunkManagerFlow(File directoryFile, String cameraName, boolean debugRetainChunks, HeliumEventNotifier heliumEventNotifier) {
+    public VideoChunkManagerFlow(File directoryFile, String cameraName, boolean debugOutputMergeChunkList,
+                                 boolean debugRetainChunks, HeliumEventNotifier heliumEventNotifier) {
         this.directoryFile = directoryFile;
         chunkInfoTreeMap = new TreeMap<>();
         mergedChunkInfoTreeMap = new TreeMap<>();
 
         this.cameraName = cameraName;
+        this.debugOutputMergeChunkList = debugOutputMergeChunkList;
         this.debugRetainChunks = debugRetainChunks;
         this.heliumEventNotifier = heliumEventNotifier;
     }
@@ -240,6 +243,7 @@ public class VideoChunkManagerFlow {
 
     @SimpleStepFunction
     public static ListenableFuture<Transition> ATTEMPT_TO_MERGE_CHUNKS(@In String cameraName,
+                                                     @In(throwIfNull = true) boolean debugOutputMergeChunkList,
                                                      @In(throwIfNull = true) boolean debugRetainChunks,
                                                      @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
                                                      @In File directoryFile,
@@ -289,7 +293,7 @@ public class VideoChunkManagerFlow {
         //4. run flow to merge the final range
         File outputFolder = new File(directoryFile, "merged");
         AnalyzeAndMergeChunkRangeFlow analyzeAndMergeChunkRangeFlow = new AnalyzeAndMergeChunkRangeFlow(
-                cameraName, debugRetainChunks, outputFolder, heliumEventNotifier,
+                cameraName, debugOutputMergeChunkList, debugRetainChunks, outputFolder, heliumEventNotifier,
                 chunksToMerge, chunkInfoTreeMap.firstEntry().getValue());
         FlowFuture<AnalyzeAndMergeChunkRangeFlow> flowFuture = flowFactory.runChildFlow(analyzeAndMergeChunkRangeFlow);
         return Futures.transform(flowFuture.getFuture(),
