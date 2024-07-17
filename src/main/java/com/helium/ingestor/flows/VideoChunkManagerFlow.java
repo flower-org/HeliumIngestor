@@ -75,6 +75,7 @@ public class VideoChunkManagerFlow {
     }
 
     @State final String cameraName;
+    @State final boolean debugRetainChunks;
     @State final HeliumEventNotifier heliumEventNotifier;
     @State @Nullable WatchService watcher;
     @State final File directoryFile;
@@ -82,12 +83,13 @@ public class VideoChunkManagerFlow {
     @State final TreeMap<File, ChunkInfo> mergedChunkInfoTreeMap;
     @State @Nullable File archiveDirectoryFile;
 
-    public VideoChunkManagerFlow(File directoryFile, String cameraName, HeliumEventNotifier heliumEventNotifier) {
+    public VideoChunkManagerFlow(File directoryFile, String cameraName, boolean debugRetainChunks, HeliumEventNotifier heliumEventNotifier) {
         this.directoryFile = directoryFile;
         chunkInfoTreeMap = new TreeMap<>();
         mergedChunkInfoTreeMap = new TreeMap<>();
 
         this.cameraName = cameraName;
+        this.debugRetainChunks = debugRetainChunks;
         this.heliumEventNotifier = heliumEventNotifier;
     }
 
@@ -171,6 +173,7 @@ public class VideoChunkManagerFlow {
         if (!chunkInfoTreeMap.isEmpty()) {
           File lastChunk = chunkInfoTreeMap.lastKey();
           //TODO: this cycle can be optimized but I'm too overwhelmed today with other stuff
+          // After each call to LoadChunkDurationFlow we go over all those chunks all over again
           ChunkInfo previousChunk = null;
           for (Map.Entry<File, ChunkInfo> entry : chunkInfoTreeMap.entrySet()) {
             ChunkInfo currentChunkInfo = entry.getValue();
@@ -237,6 +240,7 @@ public class VideoChunkManagerFlow {
 
     @SimpleStepFunction
     public static ListenableFuture<Transition> ATTEMPT_TO_MERGE_CHUNKS(@In String cameraName,
+                                                     @In(throwIfNull = true) boolean debugRetainChunks,
                                                      @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
                                                      @In File directoryFile,
                                                      @In HeliumEventNotifier heliumEventNotifier,
@@ -261,15 +265,15 @@ public class VideoChunkManagerFlow {
             File chunkFile = chunkInfoEntry.getKey();
             ChunkInfo chunkInfo = chunkInfoEntry.getValue();
 
-            if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
-                //can't merge yet
-                return Futures.immediateFuture(ADD_NEW_FILES_FROM_WATCHER_TO_TREE);
-            }
-
             LocalDateTime chunkDateTime = getChunkDateTime(chunkFile.getName());
             if (!hourMatches(chunkDateTime, firstChunkDateTime)) {
                 //Iterated through all chunks in merge hour
                 break;
+            }
+
+            if (chunkInfo.chunkState == ChunkState.DISCOVERED) {
+                //can't merge yet
+                return Futures.immediateFuture(ADD_NEW_FILES_FROM_WATCHER_TO_TREE);
             }
         }
 
@@ -285,7 +289,7 @@ public class VideoChunkManagerFlow {
         //4. run flow to merge the final range
         File outputFolder = new File(directoryFile, "merged");
         AnalyzeAndMergeChunkRangeFlow analyzeAndMergeChunkRangeFlow = new AnalyzeAndMergeChunkRangeFlow(
-                cameraName, outputFolder, heliumEventNotifier,
+                cameraName, debugRetainChunks, outputFolder, heliumEventNotifier,
                 chunksToMerge, chunkInfoTreeMap.firstEntry().getValue());
         FlowFuture<AnalyzeAndMergeChunkRangeFlow> flowFuture = flowFactory.runChildFlow(analyzeAndMergeChunkRangeFlow);
         return Futures.transform(flowFuture.getFuture(),

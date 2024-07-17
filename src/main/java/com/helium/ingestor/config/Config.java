@@ -40,6 +40,10 @@ public interface Config {
         @JsonProperty
         @Nullable
         Credentials credentials();
+
+        @Value.Default
+        @JsonProperty
+        default boolean retainChunksForDebug() { return false; }
     }
 
     @Value.Immutable

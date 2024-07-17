@@ -39,7 +39,17 @@ public class MainIngestorFlow {
     @State final Config config;
     @State final HeliumEventNotifier heliumEventNotifier;
     /** This Map - < CameraName, FfmpegCommand > */
-    @State final Map<String, String> cameraNameToCmdMap;
+    @State final Map<String, CommandAndSettings> cameraNameToCmdMap;
+
+    public static class CommandAndSettings {
+        final String command;
+        final boolean debugRetainChunks;
+
+        CommandAndSettings(String command, boolean debugRetainChunks) {
+            this.command = command;
+            this.debugRetainChunks = debugRetainChunks;
+        }
+    }
 
     public MainIngestorFlow(Config config, HeliumEventNotifier heliumEventNotifier1) {
         this.config = config;
@@ -50,7 +60,7 @@ public class MainIngestorFlow {
     @SimpleStepFunction
     public static Transition LOAD_CAMERAS_FROM_CONFIG(
             @In Config config,
-            @In Map<String, String> cameraNameToCmdMap,
+            @In Map<String, CommandAndSettings> cameraNameToCmdMap,
             @StepRef Transition RUN_CHILD_FLOWS) throws URISyntaxException {
         for (Config.Camera camera : config.cameras()) {
             String rtspUrlNoCreds = camera.rtspUrl();
@@ -71,7 +81,7 @@ public class MainIngestorFlow {
                     url, config.socketTimeout_us(),
                     config.videoFeedFolder(), camera.name());
 
-            cameraNameToCmdMap.put(camera.name(), ffmpegRtspCommand);
+            cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand, camera.retainChunksForDebug()));
 
             //Create camera feed folder if not found
             File cameraFeedFolder = new File(config.videoFeedFolder() + File.separator + camera.name());
@@ -91,7 +101,7 @@ public class MainIngestorFlow {
     @SimpleStepFunction
     public static ListenableFuture<Transition> RUN_CHILD_FLOWS(
             @In Config config,
-            @In Map<String, String> cameraNameToCmdMap,
+            @In Map<String, CommandAndSettings> cameraNameToCmdMap,
             @In HeliumEventNotifier heliumEventNotifier,
             @FlowFactory(flowType = CameraProcessRunnerFlow.class)
                 FlowFactoryPrm<CameraProcessRunnerFlow> ffmpegFlowFactory,
@@ -100,20 +110,21 @@ public class MainIngestorFlow {
             @StepRef Transition FINALIZE) {
         //1. Camera feed persist flows
         List<FlowFuture<CameraProcessRunnerFlow>> ffmpegFlowFutures = new ArrayList<>();
-        for (Map.Entry<String, String> cameraEntry : cameraNameToCmdMap.entrySet()) {
+        for (Map.Entry<String, CommandAndSettings> cameraEntry : cameraNameToCmdMap.entrySet()) {
             String camera = cameraEntry.getKey();
-            String ffmpegCommand = cameraEntry.getValue();
+            String ffmpegCommand = cameraEntry.getValue().command;
             CameraProcessRunnerFlow ffmpegFlow = new CameraProcessRunnerFlow(camera, ffmpegCommand, heliumEventNotifier);
             ffmpegFlowFutures.add(ffmpegFlowFactory.runChildFlow(ffmpegFlow));
         }
 
         //2. Duration determiner / Feed analyzer / Merger / Continuity checker flow
         List<FlowFuture<VideoChunkManagerFlow>> videoChunkManagerFutures = new ArrayList<>();
-        for (Map.Entry<String, String> cameraEntry : cameraNameToCmdMap.entrySet()) {
+        for (Map.Entry<String, CommandAndSettings> cameraEntry : cameraNameToCmdMap.entrySet()) {
             String camera = cameraEntry.getKey();
-            String ffmpegCommand = cameraEntry.getValue();
-            VideoChunkManagerFlow ffmpegFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera), camera, heliumEventNotifier);
-            videoChunkManagerFutures.add(videoChunkFlowFactory.runChildFlow(ffmpegFlow));
+            boolean debugRetainChunks = cameraEntry.getValue().debugRetainChunks;
+            VideoChunkManagerFlow chunkManagerFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera),
+                    camera, debugRetainChunks, heliumEventNotifier);
+            videoChunkManagerFutures.add(videoChunkFlowFactory.runChildFlow(chunkManagerFlow));
         }
 
         //3. Archiver Flow

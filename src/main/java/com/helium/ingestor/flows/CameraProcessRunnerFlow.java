@@ -6,9 +6,11 @@ import com.flower.anno.functions.SimpleStepFunction;
 import com.flower.anno.functions.StepFunction;
 import com.flower.anno.functions.TransitFunction;
 import com.flower.anno.params.common.In;
+import com.flower.anno.params.common.InOut;
 import com.flower.anno.params.common.Out;
 import com.flower.anno.params.transit.InRetOrException;
 import com.flower.anno.params.transit.StepRef;
+import com.flower.conf.InOutPrm;
 import com.flower.conf.OutPrm;
 import com.flower.conf.ReturnValueOrException;
 import com.flower.conf.Transition;
@@ -53,6 +55,7 @@ public class CameraProcessRunnerFlow {
     @State final StringBuilder lastLogLines;
     @State final int maxLogBufferSize;
     @State final RetryInfo retryInfo;
+    @State int killCounter = 0;
 
     @State @Nullable Process process;
     @State @Nullable BufferedReader stdout;
@@ -121,6 +124,8 @@ public class CameraProcessRunnerFlow {
             @In(throwIfNull = true) BufferedReader stdout,
             @In(throwIfNull = true) BufferedReader stderr,
             @In HeliumEventNotifier heliumEventNotifier,
+            @InOut(throwIfNull = true) InOutPrm<Integer> killCounter,
+            @StepRef Transition READ_PROCESS_OUTPUT,
             @StepRef Transition CHECK_PROCESS_STATE
     ) throws IOException {
         int charsRead = readFromStream(stdout, "STDOUT: ", lastLogLines, maxLogBufferSize);
@@ -135,21 +140,30 @@ public class CameraProcessRunnerFlow {
             if (retryInfo.lastLaunchTime + Duration.ofSeconds(POST_LAUNCH_OUTPUT_WAIT_PERIOD_SECONDS).toMillis() < now) {
                 //and If absence of output timeout elapsed as well
                 if (retryInfo.lastOutputReadTime + Duration.ofSeconds(MISSING_OUTPUT_TIMEOUT_SECONDS).toMillis() < now) {
-                    //Then Forcibly kill process
-                    String eventTitle = String.format("Killing process forcibly due to absence of output. pid [%s]", process.pid());
-                    LOGGER.warn(eventTitle);
-                    heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName,
-                            eventTitle, lastLogLines.toString());
+                    //and we see it for 3 iterations in a row
+                    if (killCounter.getInValue() < 3) {
+                        //TODO: Experimental - let this iterate 3 times before killing to reduce false positives
+                        killCounter.setOutValue(killCounter.getInValue() + 1);
+                        return READ_PROCESS_OUTPUT.setDelay(Duration.ofMillis(10));
+                    } else {
+                        //Then Forcibly kill process
+                        String eventTitle = String.format("Killing process forcibly due to absence of output. pid [%s]", process.pid());
+                        LOGGER.warn(eventTitle);
+                        heliumEventNotifier.notifyEvent(HELIUM_INGESTOR, HeliumEventType.CAMERA_PROCESS_FORCIBLY_KILLED, cameraName,
+                                eventTitle, lastLogLines.toString());
 
-                    process.destroyForcibly();
+                        process.destroyForcibly();
 
-                    return CHECK_PROCESS_STATE.setDelay(Duration.ofMillis(100L));
+                        killCounter.setOutValue(0);
+                        return CHECK_PROCESS_STATE.setDelay(Duration.ofMillis(100L));
+                    }
                 }
             }
             //NB: An alternative way of detecting output timeout would be to rely on detection creation of new files,
             // but it's more cumbersome and hard to implement.
         }
 
+        killCounter.setOutValue(0);
         return CHECK_PROCESS_STATE;
     }
 

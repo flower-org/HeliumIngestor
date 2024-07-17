@@ -43,6 +43,7 @@ import io.netty.util.CharsetUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.io.FileUtils;
 
 import javax.activation.MimetypesFileTypeMap;
 import javax.annotation.Nullable;
@@ -60,6 +61,7 @@ import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -121,6 +123,8 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
   public static final String HTTP_DATE_FORMAT = "EEE, dd MMM yyyy HH:mm:ss zzz";
   public static final String HTTP_DATE_GMT_TIMEZONE = "GMT";
   public static final int HTTP_CACHE_SECONDS = 60;
+
+  public static final AtomicInteger TRANSFERS = new AtomicInteger();
 
   @Nullable
   private FullHttpRequest request;
@@ -222,11 +226,15 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
 
       // Write the content.
       if (ctx.pipeline().get(SslHandler.class) == null) {
+        int transfers = TRANSFERS.incrementAndGet();
+        LOGGER.info("{} File: {}. act={} Zero-copy transfer started.", ctx.channel().id(), file, transfers);
         sendFileFuture =
                 ctx.write(new DefaultFileRegion(raf.getChannel(), 0, fileLength), ctx.newProgressivePromise());
         // Write the end marker.
         lastContentFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
       } else {
+        int transfers = TRANSFERS.incrementAndGet();
+        LOGGER.info("{} File: {}. act={} Chunked transfer started.", ctx.channel().id(), file, transfers);
         sendFileFuture =
                 ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf, 0, fileLength, 8192)),
                         ctx.newProgressivePromise());
@@ -275,14 +283,19 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
       // Write the initial line and the header.
       ctx.write(response);
 
+      // TODO: We might want to interrupt transfer if the channel is closed.
       // Write the content.
       raf.seek(startPos);
       if (ctx.pipeline().get(SslHandler.class) == null) {
+        int transfers = TRANSFERS.incrementAndGet();
+        LOGGER.info("{} File: {}. act={} st={} end={} len={} Zero-copy rng transfer started.", ctx.channel().id(), file, transfers, startPos, endPos, contentLength);
         sendFileFuture =
                 ctx.write(new DefaultFileRegion(raf.getChannel(), startPos, contentLength), ctx.newProgressivePromise());
         // Write the end marker.
         lastContentFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
       } else {
+        int transfers = TRANSFERS.incrementAndGet();
+        LOGGER.info("{} File: {}. act={} st={} end={} len={}  Chunked rng transfer started.", ctx.channel().id(), file, transfers, startPos, endPos, contentLength);
         sendFileFuture =
                 ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf, startPos, contentLength, 8192)),
                         ctx.newProgressivePromise());
@@ -295,15 +308,16 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
       @Override
       public void operationProgressed(ChannelProgressiveFuture future, long progress, long total) {
         if (total < 0) { // total unknown
-          LOGGER.debug("{} File: {}. Transfer progress: {}", future.channel(), file, progress);
+          LOGGER.debug("{} File: {}. Transfer progress: {}", future.channel().id(), file, progress);
         } else {
-          LOGGER.debug("{} File: {}. Transfer progress: {} / {}", future.channel(), file, progress, total);
+          LOGGER.debug("{} File: {}. Transfer progress: {} / {}", future.channel().id(), file, progress, total);
         }
       }
 
       @Override
       public void operationComplete(ChannelProgressiveFuture future) {
-        LOGGER.debug("{} File: {}. Transfer complete.", future.channel(), file);
+        int transfers = TRANSFERS.decrementAndGet();
+        LOGGER.info("{} File: {}. act={} Transfer complete.", future.channel().id(), file, transfers);
       }
     });
 
@@ -398,7 +412,11 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
           .append(name)
           .append("\">")
           .append(name)
-          .append("</a></li>\r\n");
+          .append(" | ")
+          .append(FileUtils.byteCountToDisplaySize(f.length()))
+          .append(" | ")
+          .append(f.length())
+          .append("B </a></li>\r\n");
       }
     }
 

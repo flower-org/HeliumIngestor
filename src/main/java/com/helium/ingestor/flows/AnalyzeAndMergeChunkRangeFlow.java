@@ -31,6 +31,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -54,6 +57,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
     final static String CMD = "ffmpeg -i \"concat:%s\" -c copy %s";
     final static Integer MAX_RETRIES = 3;
     final static DateTimeFormatter ZIP_FILE_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
+    final static String RETAINED_CHUNKS_FOLDER_NAME = "retainedChunks";
 
     /** Even though the precision is to a second, experimentally it was determined that sometimes gaps slightly larger
      * than 1 second are being detected, but don't indicate an actual footage loss, resulting in false positives.
@@ -71,6 +75,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
     }
 
     @State final String cameraName;
+    @State final boolean debugRetainChunks;
     @State final File outputFolder;
     @State final HeliumEventNotifier heliumEventNotifier;
 
@@ -83,11 +88,13 @@ public class AnalyzeAndMergeChunkRangeFlow {
     @State @Nullable int currentMergeIndex;
 
     public AnalyzeAndMergeChunkRangeFlow(String cameraName,
+                                         boolean debugRetainChunks,
                                          File outputFolder,
                                          HeliumEventNotifier heliumEventNotifier,
                                          List<ChunkInfo> chunksToMerge,
                                          ChunkInfo nextHourChunk) {
         this.cameraName = cameraName;
+        this.debugRetainChunks = debugRetainChunks;
         this.outputFolder = outputFolder;
         this.heliumEventNotifier = heliumEventNotifier;
 
@@ -323,9 +330,25 @@ public class AnalyzeAndMergeChunkRangeFlow {
 
     @SimpleStepFunction
     public static Transition DELETE_MERGED_CHUNKS(@In List<ChunkInfo> chunksToMerge,
-                                                  @Terminal Transition END) {
-        //TODO: cleanup error reporting / handling?
-        chunksToMerge.forEach(c -> c.chunkFile.delete());
+                                                  @In File outputFolder,
+                                                  @In boolean debugRetainChunks,
+                                                  @Terminal Transition END) throws IOException {
+        if (debugRetainChunks) {
+            // If we choose to retain chunks for debug, we move them to special "retain" folder
+            final File retainedChunksFolder = new File(outputFolder, RETAINED_CHUNKS_FOLDER_NAME);
+            if (!retainedChunksFolder.exists()) {
+                retainedChunksFolder.mkdirs();
+            }
+
+            for (ChunkInfo c : chunksToMerge) {
+                Path sourcePath = c.chunkFile.toPath();
+                Path targetPath = new File(retainedChunksFolder, c.chunkFile.getName()).toPath();
+                Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } else {
+            //TODO: cleanup error reporting / handling?
+            chunksToMerge.forEach(c -> c.chunkFile.delete());
+        }
         return END;
     }
 

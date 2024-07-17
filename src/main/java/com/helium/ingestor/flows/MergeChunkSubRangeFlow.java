@@ -158,11 +158,17 @@ public class MergeChunkSubRangeFlow {
     @StepFunction(transit = "LAUNCH_PROCESS_TRANSITION")
     public static void LAUNCH_PROCESS(
             @In String command,
+            @In List<ChunkInfo> chunksToMerge,
             @Out OutPrm<Process> process,
             @Out OutPrm<BufferedReader> stdout,
             @Out OutPrm<BufferedReader> stderr
     ) throws IOException {
-        LOGGER.info("Merging video chunks. cmd: {}", command);
+        String firstChunk = "chunk N/A", lastChunk = "chunk N/A";
+        if (!chunksToMerge.isEmpty()) {
+            firstChunk = chunksToMerge.get(0).chunkFile.getName();
+            lastChunk = chunksToMerge.get(chunksToMerge.size()-1).chunkFile.getName();
+        }
+        LOGGER.info("Merging {} video chunks ({} -> {}). cmd: {}", chunksToMerge.size(), firstChunk, lastChunk, command);
 
         Process newProcess = Runtime.getRuntime().exec(command);
 
