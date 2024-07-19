@@ -31,11 +31,4 @@ public class FlowTerminationEvent {
         String message = String.format("Flow terminated normally. Flow: %s.", flowInfo);
         NOTIFIER.notifyEvent(HELIUM_INGESTOR, HeliumEventType.FLOW_SHUTDOWN, null, eventTitle, message);
     }
-
-    public static String getStackTraceAsString(Throwable throwable) {
-        StringWriter stringWriter = new StringWriter();
-        PrintWriter printWriter = new PrintWriter(stringWriter);
-        throwable.printStackTrace(printWriter);
-        return stringWriter.toString();
-    }
 }

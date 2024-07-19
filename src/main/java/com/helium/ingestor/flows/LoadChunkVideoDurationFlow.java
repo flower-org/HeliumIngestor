@@ -17,8 +17,6 @@ import com.flower.conf.InOutPrm;
 import com.flower.conf.OutPrm;
 import com.flower.conf.ReturnValueOrException;
 import com.flower.conf.Transition;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
 import com.helium.ingestor.flows.events.FlowTerminationEvent;
@@ -37,10 +35,11 @@ import java.time.format.DateTimeFormatter;
 import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
 import static com.helium.ingestor.flows.CameraProcessRunnerFlow.readString;
 
+// TODO: DRY With LoadVideoChannelsFlow, MergeChunkSubRangeFlow
 @FlowType(firstStep = "LAUNCH_PROCESS")
 @DisableEventProfiles({FlowTerminationEvent.class})
-public class LoadChunkDurationFlow {
-    final static Logger LOGGER = LoggerFactory.getLogger(LoadChunkDurationFlow.class);
+public class LoadChunkVideoDurationFlow {
+    final static Logger LOGGER = LoggerFactory.getLogger(LoadChunkVideoDurationFlow.class);
 
     final static DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH_mm_ss");
     final static String CMD = "ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s";
@@ -61,7 +60,7 @@ public class LoadChunkDurationFlow {
     @State @Nullable Double durationSeconds;
     @State @Nullable Throwable durationException;
 
-    public LoadChunkDurationFlow(String cameraName, String videoChunkFileName, HeliumEventNotifier heliumEventNotifier) {
+    public LoadChunkVideoDurationFlow(String cameraName, String videoChunkFileName, HeliumEventNotifier heliumEventNotifier) {
         this.cameraName = cameraName;
         this.videoChunkFileName = videoChunkFileName;
         this.command = String.format(CMD, videoChunkFileName);
@@ -78,7 +77,7 @@ public class LoadChunkDurationFlow {
             @Out OutPrm<BufferedReader> stdout,
             @Out OutPrm<BufferedReader> stderr
     ) throws IOException {
-        LOGGER.debug("Getting chunk duration {}, cmd: {}", videoChunkFileName, command);
+        LOGGER.debug("Getting video chunk duration {}, cmd: {}", videoChunkFileName, command);
 
         Process newProcess = Runtime.getRuntime().exec(command);
 
@@ -95,6 +94,7 @@ public class LoadChunkDurationFlow {
             @In HeliumEventNotifier heliumEventNotifier,
             @InOut(throwIfNull = true, out = Output.OPTIONAL) InOutPrm<Integer> attempt,
             @InRetOrException ReturnValueOrException<Void> retValOrExc,
+            @Out(out = Output.OPTIONAL) OutPrm<Throwable> durationException,
             @StepRef Transition LAUNCH_PROCESS,
             @StepRef Transition READ_PROCESS_OUTPUT,
             @Terminal Transition END
@@ -110,6 +110,7 @@ public class LoadChunkDurationFlow {
                 return LAUNCH_PROCESS.setDelay(Duration.ofMillis(delay));
             } else {
                 sendFailedToReadVideoChunkEvent(currentAttempt, cameraName, command, videoChunkFileName, heliumEventNotifier, -1, "N/A", "N/A");
+                durationException.setOutValue(retValOrExc.exception().get());
                 return END;
             }
         } else {

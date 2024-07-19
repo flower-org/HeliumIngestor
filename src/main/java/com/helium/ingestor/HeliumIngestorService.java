@@ -33,12 +33,15 @@ public class HeliumIngestorService {
         flower.registerFlow(MainIngestorFlow.class);
         flower.registerFlow(CameraProcessRunnerFlow.class);
         flower.registerFlow(VideoChunkManagerFlow.class);
-        flower.registerFlow(LoadChunkDurationFlow.class);
+        flower.registerFlow(LoadChunkVideoDurationFlow.class);
         flower.registerFlow(AnalyzeAndMergeChunkRangeFlow.class);
         flower.registerFlow(MergeChunkSubRangeFlow.class);
+        flower.registerFlow(LoadVideoDurationFlow.class);
+        flower.registerFlow(LoadMediaChannelsFlow.class);
 
         flower.registerEventProfile(FlowTerminationEvent.class, true);
         flower.registerEventProfile(FlowExceptionEvent.class, true);
+
         FlowTerminationEvent.setNOTIFIER(heliumEventNotifier);
         FlowExceptionEvent.setNOTIFIER(heliumEventNotifier);
 

@@ -2,7 +2,7 @@ package com.helium.ingestor.flows;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
-import static com.helium.ingestor.flows.LoadChunkDurationFlow.*;
+import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.*;
 import static com.helium.ingestor.flows.MergeChunkSubRangeFlow.getRenameFileName;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkInfo;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkState;
@@ -67,6 +67,8 @@ public class AnalyzeAndMergeChunkRangeFlow {
     public static class ChunkRangeInfo {
         final List<ChunkInfo> chunkRange;
         final LocalDateTime endOfRange;
+        @Nullable File outputFile;
+        boolean retainChunks = false;
 
         ChunkRangeInfo(List<ChunkInfo> chunkRange, LocalDateTime endOfRange) {
             this.chunkRange = chunkRange;
@@ -75,6 +77,8 @@ public class AnalyzeAndMergeChunkRangeFlow {
     }
 
     @State final String cameraName;
+    @State final boolean cameraHasAudio;
+    @State final boolean cameraHasVideo;
     @State final boolean debugOutputMergeChunkList;
     @State final boolean debugRetainChunks;
     @State final File outputFolder;
@@ -89,6 +93,8 @@ public class AnalyzeAndMergeChunkRangeFlow {
     @State @Nullable int currentMergeIndex;
 
     public AnalyzeAndMergeChunkRangeFlow(String cameraName,
+                                         boolean cameraHasAudio,
+                                         boolean cameraHasVideo,
                                          boolean debugOutputMergeChunkList,
                                          boolean debugRetainChunks,
                                          File outputFolder,
@@ -106,6 +112,8 @@ public class AnalyzeAndMergeChunkRangeFlow {
         this.chunksContiguousRanges = new ArrayList<>();
         this.badChunks = new HashSet<>();
         this.currentMergeIndex = 0;
+        this.cameraHasAudio = cameraHasAudio;
+        this.cameraHasVideo = cameraHasVideo;
     }
 
     //TODO: this is potentially a very heavy step, it might block for tens of seconds with SHA256 checksum
@@ -159,8 +167,12 @@ public class AnalyzeAndMergeChunkRangeFlow {
                                               @In Set<ChunkInfo> badChunks,
                                               @In List<ChunkRangeInfo> chunksContiguousRanges,
                                               @In HeliumEventNotifier heliumEventNotifier,
-                                              @StepRef Transition LAUNCH_MERGE_PROCESSES,
-                                              @StepRef Transition ZIP_BAD_CHUNKS) {
+                                              @StepRef(desc = "If contiguous duration ranges were determined successfully,\n" +
+                                                              "validate audio continuity for those ranges next")
+                                                  Transition AUDIO_CONTINUITY_CHECK,
+                                              @StepRef(desc = "If there are no ranges of valid chunks to merge,\n" +
+                                                              "go directly to zipping bad chunks step")
+                                                  Transition ZIP_BAD_CHUNKS) {
     List<ChunkInfo> currentRange = null;
     LocalDateTime currentRangeWm = null;
     Duration actualRangeDuration = null;
@@ -214,35 +226,80 @@ public class AnalyzeAndMergeChunkRangeFlow {
         // Add last range to ranges
         chunksContiguousRanges.add(new ChunkRangeInfo(currentRange, currentRangeWm));
 
-        return LAUNCH_MERGE_PROCESSES;
+        return AUDIO_CONTINUITY_CHECK;
     } else {
         return ZIP_BAD_CHUNKS;
     }
   }
 
   @SimpleStepFunction
+  public static Transition AUDIO_CONTINUITY_CHECK(@StepRef Transition LAUNCH_MERGE_PROCESSES) {
+/*
+TODO:
+    Test chunks for audio or no audio
+    No audio head goes to no audio range, since 1st chunk should be with audio for merged to have audio
+    Update ranges if first chunk detected as no audio
+
+    SHOW STREAMS:
+    ======================================
+    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_33.mp4
+    0|video
+
+    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_34.mp4
+    0|video
+
+    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_36.mp4
+    0|video
+    1|audio
+    ======================================
+*/
+
+//      TODO: here implement no audio chunk isolation
+
+      return LAUNCH_MERGE_PROCESSES;
+  }
+
+  @SimpleStepFunction
   public static ListenableFuture<Transition> LAUNCH_MERGE_PROCESSES(@In String cameraName,
+                                                                   @In boolean cameraHasAudio,
+                                                                   @In boolean cameraHasVideo,
                                                                    @In boolean debugOutputMergeChunkList,
                                                                    @In List<ChunkRangeInfo> chunksContiguousRanges,
                                                                    @In List<ChunkInfo> chunksToMerge,
                                                                    @In Set<ChunkInfo> badChunks,
                                                                    @InOut(throwIfNull=true) InOutPrm<Integer> currentMergeIndex,
-                                                                   @FlowFactory(flowType=MergeChunkSubRangeFlow.class) FlowFactoryPrm<MergeChunkSubRangeFlow> flowFactory,
+                                                                   @FlowFactory(flowType=MergeChunkSubRangeFlow.class,
+                                                                        desc = "Run merge operation for a range in a child Flow")
+                                                                      FlowFactoryPrm<MergeChunkSubRangeFlow> flowFactory,
                                                                    @In File outputFolder,
                                                                    @In HeliumEventNotifier heliumEventNotifier,
-                                                                   @StepRef Transition LAUNCH_MERGE_PROCESSES,
-                                                                   @StepRef Transition INTEGRITY_CHECK,
-                                                                   @StepRef Transition ZIP_BAD_CHUNKS) {
+                                                                   @StepRef(desc = "Merge one range at a time, in cycle")
+                                                                      Transition LAUNCH_MERGE_PROCESSES,
+                                                                   @StepRef(desc = "Sometimes merge results in error\n" +
+                                                                           "'Impossible to open' due to some chunk in the middle.\n" +
+                                                                           "In such cases we mark that chunk as bad and re-start range creation")
+                                                                      Transition INTEGRITY_CHECK,
+                                                                   @StepRef(desc = "Once all ranges are merged,\n" +
+                                                                                   "we proceed to zip bad chunks")
+                                                                      Transition ZIP_BAD_CHUNKS) {
     int mergeIndex = currentMergeIndex.getInValue();
     if (mergeIndex < chunksContiguousRanges.size()) {
-        ChunkRangeInfo chunkRangeInfo = chunksContiguousRanges.get(mergeIndex);
-        MergeChunkSubRangeFlow mergeChunkSubRangeFlow = new MergeChunkSubRangeFlow(cameraName, debugOutputMergeChunkList, chunkRangeInfo.chunkRange,
-                chunkRangeInfo.endOfRange, outputFolder, heliumEventNotifier);
+        ChunkRangeInfo chunkRangeInfo = checkNotNull(chunksContiguousRanges.get(mergeIndex));
+        MergeChunkSubRangeFlow mergeChunkSubRangeFlow = new MergeChunkSubRangeFlow(cameraName,
+                cameraHasAudio, cameraHasVideo,
+                debugOutputMergeChunkList, chunkRangeInfo, outputFolder, heliumEventNotifier);
 
         FlowFuture<MergeChunkSubRangeFlow> flowFuture = flowFactory.runChildFlow(mergeChunkSubRangeFlow);
 
         return FuturesTool.tryCatchAsync(flowFuture.getFuture(),
-                ignored_ -> {
+                mergeChunkSubRangeResult -> {
+                    chunkRangeInfo.outputFile = mergeChunkSubRangeResult.outputFile;
+
+                    String stderr = mergeChunkSubRangeResult.stderrOutput.toString();
+                    if (stderr.contains("Impossible to open")) {
+                        throw new RuntimeException(stderr);
+                    }
+
                     currentMergeIndex.setOutValue(mergeIndex + 1);
                     return Futures.immediateFuture(LAUNCH_MERGE_PROCESSES);
                 },
@@ -265,6 +322,10 @@ public class AnalyzeAndMergeChunkRangeFlow {
                                         // Add problematic chunk to bad chunks
                                         if (badChunks.add(badChunk)) {
                                             // Recreate ranges
+                                            chunksContiguousRanges.forEach(
+                                                rng -> { if (rng.outputFile != null && rng.outputFile.exists()) { rng.outputFile.delete(); } }
+                                            );
+
                                             chunksContiguousRanges.clear();
                                             currentMergeIndex.setOutValue(0);
                                             return Futures.immediateFuture(INTEGRITY_CHECK);
@@ -333,26 +394,39 @@ public class AnalyzeAndMergeChunkRangeFlow {
     }
 
     @SimpleStepFunction
-    public static Transition DELETE_MERGED_CHUNKS(@In List<ChunkInfo> chunksToMerge,
+    public static Transition DELETE_MERGED_CHUNKS(@In List<ChunkRangeInfo> chunksContiguousRanges,
+                                                  @In Set<ChunkInfo> badChunks,
                                                   @In File outputFolder,
                                                   @In boolean debugRetainChunks,
                                                   @Terminal Transition END) throws IOException {
-        if (debugRetainChunks) {
-            // If we choose to retain chunks for debug, we move them to special "retain" folder
-            final File retainedChunksFolder = new File(outputFolder, RETAINED_CHUNKS_FOLDER_NAME);
-            if (!retainedChunksFolder.exists()) {
-                retainedChunksFolder.mkdirs();
-            }
+        for (ChunkRangeInfo range : chunksContiguousRanges) {
+            if (debugRetainChunks || range.retainChunks) {
+                // If we need to retain chunks for this video, we move them to special "retain" folder
+                final File retainedChunksFolder = new File(outputFolder, RETAINED_CHUNKS_FOLDER_NAME);
+                if (!retainedChunksFolder.exists()) {
+                    retainedChunksFolder.mkdirs();
+                }
 
-            for (ChunkInfo c : chunksToMerge) {
-                Path sourcePath = c.chunkFile.toPath();
-                Path targetPath = new File(retainedChunksFolder, c.chunkFile.getName()).toPath();
-                Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                // In a subfolder named the same as merged video file
+                final File mergedRangeChunksSubFolder = new File(retainedChunksFolder,
+                        range.outputFile == null ? "no_merge_output_file" : range.outputFile.getName());
+                if (!mergedRangeChunksSubFolder.exists()) {
+                    mergedRangeChunksSubFolder.mkdirs();
+                }
+
+                for (ChunkInfo c : range.chunkRange) {
+                    Path sourcePath = c.chunkFile.toPath();
+                    Path targetPath = new File(mergedRangeChunksSubFolder, c.chunkFile.getName()).toPath();
+                    Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } else {
+                //TODO: cleanup error reporting / handling?
+                range.chunkRange.forEach(c -> c.chunkFile.delete());
             }
-        } else {
-            //TODO: cleanup error reporting / handling?
-            chunksToMerge.forEach(c -> c.chunkFile.delete());
         }
+
+        badChunks.forEach(c -> c.chunkFile.delete());
+
         return END;
     }
 

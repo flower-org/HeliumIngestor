@@ -44,6 +44,14 @@ public interface Config {
         @Value.Default
         @JsonProperty
         default boolean retainChunksForDebug() { return false; }
+
+        @Value.Default
+        @JsonProperty
+        default boolean hasVideo() { return true; }
+
+        @Value.Default
+        @JsonProperty
+        default boolean hasAudio() { return true; }
     }
 
     @Value.Immutable

@@ -12,8 +12,8 @@ import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
 import javax.annotation.Nullable;
 
+import static com.google.common.base.Throwables.getStackTraceAsString;
 import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
-import static com.helium.ingestor.flows.events.FlowTerminationEvent.getStackTraceAsString;
 
 /** Don't forget to call FlowExceptionEvent.setNOTIFIER(...) before use */
 @EventProfileContainer

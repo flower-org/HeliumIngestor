@@ -20,23 +20,33 @@ public enum HeliumEventType {
   /** Video footage for a period is longer than a given period. (hypothetical) */
   SURPLUS_IN_FOOTAGE,
   /** Attempt to merge video chunks failed */
-  // TODO: what do? delete chunks? mark as unmergeable?
   VIDEO_MERGING_FAILED,
-  /** Found that Merge output file already existed, renamed */
+  /** Found that Merge output file already existed, renamed old file */
   FOUND_PRE_EXISTING_MERGE_OUTPUT_FILE,
-  /** Can't access archive service */
-  ARCHIVE_UNREACHABLE,
-  /** Can't reach archive service and deleted video due to out of space */
+  /** Can't access archive service. Only fires if archive is enabled.
+   TODO: we probably want to delete this event if we eventually succeed at archiving the file.
+   TODO: maybe more like tombstone - can be ignored if followed by ARCHIVAL_SUCCEEDED.
+   TODO: do we want to avoid event spam for every successful archival? */
+  ARCHIVAL_FAILED_ATTEMPT,
+  ARCHIVAL_SUCCEEDED,
+  /** Can't reach archive service and deleted video due to out of space. Only fires if archive is enabled. */
   VIDEO_DELETED_DUE_TO_ARCHIVE_UNREACHABLE,
-  /** Can't access frame analyzer service */
-  ANALYZER_UNREACHABLE,
-  /** Frame analyzed, list objects detected */
-  ANALYSIS_RESULTS,
-  /** Frame analyzed, list of changes in detected objects since last detection */
+  /** Can't access frame analyzer service. Only fires if analyzer is enabled.
+   TODO: we probably want to delete this event if we eventually succeed at reaching out to analyzer.
+   TODO: maybe more like tombstone - can be ignored if followed by ANALYSIS_SUCCEEDED. */
+  ANALYSIS_FAILED_ATTEMPT,
+  /** Frame analyzed, list of objects detected, extracted frame with marks available */
+  ANALYSIS_SUCCEEDED,
+  /** Frame analyzed, list of changes in detected objects since last detection
+   * It's possible to calculate on Client, but then report for a period will require a full scan every time. */
   ANALYSIS_RESULTS_DIFF,
   /** One of the Flower worker flows failed with Exception (e.g.: CameraProcessRunnerFlow, VideoChunkManagerFlow,
    * etc.) */
   FLOW_EXCEPTION,
   /** One of the Flower worker flows shuts down normally */
-  FLOW_SHUTDOWN
+  FLOW_SHUTDOWN,
+  /** Post-merge duration check failed */
+  MERGED_FOOTAGE_DURATION_MISMATCH,
+  /** Post-merge channel integrity check failed */
+  MERGED_FOOTAGE_MISSING_MEDIA_CHANNELS
 }

@@ -1,6 +1,6 @@
 package com.helium.ingestor.flows;
 
-import static com.helium.ingestor.flows.LoadChunkDurationFlow.getChunkDateTime;
+import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.getChunkDateTime;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
 
 import com.flower.anno.flow.FlowType;
@@ -75,6 +75,8 @@ public class VideoChunkManagerFlow {
     }
 
     @State final String cameraName;
+    @State final boolean cameraHasAudio;
+    @State final boolean cameraHasVideo;
     @State final boolean debugOutputMergeChunkList;
     @State final boolean debugRetainChunks;
     @State final HeliumEventNotifier heliumEventNotifier;
@@ -84,13 +86,17 @@ public class VideoChunkManagerFlow {
     @State final TreeMap<File, ChunkInfo> mergedChunkInfoTreeMap;
     @State @Nullable File archiveDirectoryFile;
 
-    public VideoChunkManagerFlow(File directoryFile, String cameraName, boolean debugOutputMergeChunkList,
+    public VideoChunkManagerFlow(File directoryFile, String cameraName, boolean cameraHasAudio,
+                                 boolean cameraHasVideo, boolean debugOutputMergeChunkList,
                                  boolean debugRetainChunks, HeliumEventNotifier heliumEventNotifier) {
         this.directoryFile = directoryFile;
         chunkInfoTreeMap = new TreeMap<>();
         mergedChunkInfoTreeMap = new TreeMap<>();
 
         this.cameraName = cameraName;
+        this.cameraHasAudio = cameraHasAudio;
+        this.cameraHasVideo = cameraHasVideo;
+
         this.debugOutputMergeChunkList = debugOutputMergeChunkList;
         this.debugRetainChunks = debugRetainChunks;
         this.heliumEventNotifier = heliumEventNotifier;
@@ -168,7 +174,7 @@ public class VideoChunkManagerFlow {
             @In String cameraName,
             @In HeliumEventNotifier heliumEventNotifier,
             @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
-            @FlowFactory(flowType=LoadChunkDurationFlow.class) FlowFactoryPrm<LoadChunkDurationFlow> loadChunkDurationFlowFactory,
+            @FlowFactory(flowType= LoadChunkVideoDurationFlow.class) FlowFactoryPrm<LoadChunkVideoDurationFlow> loadChunkDurationFlowFactory,
             @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES,
             @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS,
             @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
@@ -197,9 +203,9 @@ public class VideoChunkManagerFlow {
                         } else {
                             //TODO: instead of DurationFlow/ffprobe write a lightweight function to extract duration from mp4
                             // Ideally pair that task with sending the chunk to the Analyzer service.
-                            LoadChunkDurationFlow flow =
-                                    new LoadChunkDurationFlow(cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
-                            FlowFuture<LoadChunkDurationFlow> loadDurationFlowFuture =
+                            LoadChunkVideoDurationFlow flow =
+                                    new LoadChunkVideoDurationFlow(cameraName, chunkFile.getAbsolutePath(), heliumEventNotifier);
+                            FlowFuture<LoadChunkVideoDurationFlow> loadDurationFlowFuture =
                                     loadChunkDurationFlowFactory.runChildFlow(flow);
 
                             return FuturesTool.tryCatch(
@@ -243,6 +249,8 @@ public class VideoChunkManagerFlow {
 
     @SimpleStepFunction
     public static ListenableFuture<Transition> ATTEMPT_TO_MERGE_CHUNKS(@In String cameraName,
+                                                     @In boolean cameraHasAudio,
+                                                     @In boolean cameraHasVideo,
                                                      @In(throwIfNull = true) boolean debugOutputMergeChunkList,
                                                      @In(throwIfNull = true) boolean debugRetainChunks,
                                                      @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
@@ -293,7 +301,7 @@ public class VideoChunkManagerFlow {
         //4. run flow to merge the final range
         File outputFolder = new File(directoryFile, "merged");
         AnalyzeAndMergeChunkRangeFlow analyzeAndMergeChunkRangeFlow = new AnalyzeAndMergeChunkRangeFlow(
-                cameraName, debugOutputMergeChunkList, debugRetainChunks, outputFolder, heliumEventNotifier,
+                cameraName, cameraHasAudio, cameraHasVideo, debugOutputMergeChunkList, debugRetainChunks, outputFolder, heliumEventNotifier,
                 chunksToMerge, chunkInfoTreeMap.firstEntry().getValue());
         FlowFuture<AnalyzeAndMergeChunkRangeFlow> flowFuture = flowFactory.runChildFlow(analyzeAndMergeChunkRangeFlow);
         return Futures.transform(flowFuture.getFuture(),

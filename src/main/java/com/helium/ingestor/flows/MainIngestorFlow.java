@@ -44,9 +44,14 @@ public class MainIngestorFlow {
     public static class CommandAndSettings {
         final String command;
         final boolean debugRetainChunks;
+        final boolean cameraHasAudio;
+        final boolean cameraHasVideo;
 
-        CommandAndSettings(String command, boolean debugRetainChunks) {
+        CommandAndSettings(String command, boolean debugRetainChunks,
+                           boolean cameraHasAudio, boolean cameraHasVideo) {
             this.command = command;
+            this.cameraHasAudio = cameraHasAudio;
+            this.cameraHasVideo = cameraHasVideo;
             this.debugRetainChunks = debugRetainChunks;
         }
     }
@@ -81,7 +86,8 @@ public class MainIngestorFlow {
                     url, config.socketTimeout_us(),
                     config.videoFeedFolder(), camera.name());
 
-            cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand, camera.retainChunksForDebug()));
+            cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
+                    camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
 
             //Create camera feed folder if not found
             File cameraFeedFolder = new File(config.videoFeedFolder() + File.separator + camera.name());
@@ -123,8 +129,10 @@ public class MainIngestorFlow {
             String camera = cameraEntry.getKey();
             boolean debugOutputMergeChunkList = config.debugOutputMergeChunkList();
             boolean debugRetainChunks = cameraEntry.getValue().debugRetainChunks;
+            boolean cameraHasAudio = cameraEntry.getValue().cameraHasAudio;
+            boolean cameraHasVideo = cameraEntry.getValue().cameraHasVideo;
             VideoChunkManagerFlow chunkManagerFlow = new VideoChunkManagerFlow(new File(config.videoFeedFolder(), camera),
-                    camera, debugOutputMergeChunkList, debugRetainChunks, heliumEventNotifier);
+                    camera, cameraHasAudio, cameraHasVideo, debugOutputMergeChunkList, debugRetainChunks, heliumEventNotifier);
             videoChunkManagerFutures.add(videoChunkFlowFactory.runChildFlow(chunkManagerFlow));
         }
 
