@@ -320,8 +320,7 @@ public class MergeChunkSubRangeFlow {
             @In HeliumEventNotifier heliumEventNotifier,
 
             @FlowFactory(desc = "Run `GetDuration` operation\n"+
-                    "for a video in a child Flow",
-                    flowType = LoadVideoDurationFlow.class)
+                    "for a video in a child Flow")
                 FlowFactoryPrm<LoadVideoDurationFlow> loadVideoDurationFlowFactory,
 
             @StepRef(desc = "After duration check, check that both\n" +
@@ -379,8 +378,7 @@ public class MergeChunkSubRangeFlow {
             @In HeliumEventNotifier heliumEventNotifier,
 
             @FlowFactory(desc = "Run `GetChannels` operation\n" +
-                    "for a video in a child Flow",
-                    flowType = LoadMediaChannelsFlow.class)
+                    "for a video in a child Flow")
                 FlowFactoryPrm<LoadMediaChannelsFlow> loadMediaChannelsFlowFactory,
 
             @Terminal Transition END

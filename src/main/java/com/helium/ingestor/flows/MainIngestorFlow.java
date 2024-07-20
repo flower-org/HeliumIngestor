@@ -68,7 +68,6 @@ public class MainIngestorFlow {
     public static Transition LOAD_CAMERAS_FROM_CONFIG(
             @In Config config,
             @In Map<String, CommandAndSettings> cameraNameToCmdMap,
-            @FlowRepo FlowRepoPrm repo,
             @StepRef Transition RUN_CHILD_FLOWS) throws URISyntaxException {
         for (Config.Camera camera : config.cameras()) {
             String rtspUrlNoCreds = camera.rtspUrl();
@@ -112,10 +111,8 @@ public class MainIngestorFlow {
             @In Config config,
             @In Map<String, CommandAndSettings> cameraNameToCmdMap,
             @In HeliumEventNotifier heliumEventNotifier,
-            @FlowFactory(flowType = CameraProcessRunnerFlow.class)
-                FlowFactoryPrm<CameraProcessRunnerFlow> ffmpegFlowFactory,
-            @FlowFactory(flowType = VideoChunkManagerFlow.class)
-                FlowFactoryPrm<VideoChunkManagerFlow> videoChunkFlowFactory,
+            @FlowFactory FlowFactoryPrm<CameraProcessRunnerFlow> ffmpegFlowFactory,
+            @FlowFactory FlowFactoryPrm<VideoChunkManagerFlow> videoChunkFlowFactory,
             @StepRef Transition FINALIZE) {
         //1. Camera feed persist flows
         List<FlowFuture<CameraProcessRunnerFlow>> ffmpegFlowFutures = new ArrayList<>();

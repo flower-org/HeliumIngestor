@@ -174,7 +174,7 @@ public class VideoChunkManagerFlow {
             @In String cameraName,
             @In HeliumEventNotifier heliumEventNotifier,
             @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
-            @FlowFactory(flowType= LoadChunkVideoDurationFlow.class) FlowFactoryPrm<LoadChunkVideoDurationFlow> loadChunkDurationFlowFactory,
+            @FlowFactory FlowFactoryPrm<LoadChunkVideoDurationFlow> loadChunkDurationFlowFactory,
             @StepRef Transition LOAD_DURATIONS_FROM_CHUNK_FILES,
             @StepRef Transition ATTEMPT_TO_MERGE_CHUNKS,
             @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
@@ -256,7 +256,7 @@ public class VideoChunkManagerFlow {
                                                      @In TreeMap<File, ChunkInfo> chunkInfoTreeMap,
                                                      @In File directoryFile,
                                                      @In HeliumEventNotifier heliumEventNotifier,
-                                                     @FlowFactory(flowType = AnalyzeAndMergeChunkRangeFlow.class) FlowFactoryPrm<AnalyzeAndMergeChunkRangeFlow> flowFactory,
+                                                     @FlowFactory FlowFactoryPrm<AnalyzeAndMergeChunkRangeFlow> flowFactory,
                                                      @StepRef Transition ADD_NEW_FILES_FROM_WATCHER_TO_TREE) {
         File firstChunk = chunkInfoTreeMap.firstKey();
         File lastChunk = chunkInfoTreeMap.lastKey();

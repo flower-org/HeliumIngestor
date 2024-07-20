@@ -268,8 +268,7 @@ TODO:
                                                                    @In List<ChunkInfo> chunksToMerge,
                                                                    @In Set<ChunkInfo> badChunks,
                                                                    @InOut(throwIfNull=true) InOutPrm<Integer> currentMergeIndex,
-                                                                   @FlowFactory(flowType=MergeChunkSubRangeFlow.class,
-                                                                        desc = "Run merge operation for a range in a child Flow")
+                                                                   @FlowFactory(desc = "Run merge operation for a range in a child Flow")
                                                                       FlowFactoryPrm<MergeChunkSubRangeFlow> flowFactory,
                                                                    @In File outputFolder,
                                                                    @In HeliumEventNotifier heliumEventNotifier,
