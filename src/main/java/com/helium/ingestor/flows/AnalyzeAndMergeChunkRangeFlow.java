@@ -167,10 +167,10 @@ public class AnalyzeAndMergeChunkRangeFlow {
                                               @In Set<ChunkInfo> badChunks,
                                               @In List<ChunkRangeInfo> chunksContiguousRanges,
                                               @In HeliumEventNotifier heliumEventNotifier,
-                                              @StepRef(desc = "If contiguous duration ranges were determined successfully,\n" +
+                                              @StepRef(note = "If contiguous duration ranges were determined successfully,\n" +
                                                               "validate audio continuity for those ranges next")
                                                   Transition AUDIO_CONTINUITY_CHECK,
-                                              @StepRef(desc = "If there are no ranges of valid chunks to merge,\n" +
+                                              @StepRef(note = "If there are no ranges of valid chunks to merge,\n" +
                                                               "go directly to zipping bad chunks step")
                                                   Transition ZIP_BAD_CHUNKS) {
     List<ChunkInfo> currentRange = null;
@@ -268,17 +268,17 @@ TODO:
                                                                    @In List<ChunkInfo> chunksToMerge,
                                                                    @In Set<ChunkInfo> badChunks,
                                                                    @InOut(throwIfNull=true) InOutPrm<Integer> currentMergeIndex,
-                                                                   @FlowFactory(desc = "Run merge operation for a range in a child Flow")
+                                                                   @FlowFactory(note = "Run merge operation for a range in a child Flow")
                                                                       FlowFactoryPrm<MergeChunkSubRangeFlow> flowFactory,
                                                                    @In File outputFolder,
                                                                    @In HeliumEventNotifier heliumEventNotifier,
-                                                                   @StepRef(desc = "Merge one range at a time, in cycle")
+                                                                   @StepRef(note = "Merge one range at a time, in cycle")
                                                                       Transition LAUNCH_MERGE_PROCESSES,
-                                                                   @StepRef(desc = "Sometimes merge results in error\n" +
+                                                                   @StepRef(note = "Sometimes merge results in error\n" +
                                                                            "'Impossible to open' due to some chunk in the middle.\n" +
                                                                            "In such cases we mark that chunk as bad and re-start range creation")
                                                                       Transition INTEGRITY_CHECK,
-                                                                   @StepRef(desc = "Once all ranges are merged,\n" +
+                                                                   @StepRef(note = "Once all ranges are merged,\n" +
                                                                                    "we proceed to zip bad chunks")
                                                                       Transition ZIP_BAD_CHUNKS) {
     int mergeIndex = currentMergeIndex.getInValue();

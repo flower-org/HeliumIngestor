@@ -6,7 +6,6 @@ import static com.helium.ingestor.flows.AnalyzeAndMergeChunkRangeFlow.GAP_IN_FOO
 import static com.helium.ingestor.flows.AnalyzeAndMergeChunkRangeFlow.secondsAsDoubleToDuration;
 import static com.helium.ingestor.flows.CameraProcessRunnerFlow.readString;
 import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.getChunkDateTime;
-import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.getChunkUnixTime;
 import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.toUnixTime;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkInfo;
 
@@ -220,13 +219,13 @@ public class MergeChunkSubRangeFlow {
             @In HeliumEventNotifier heliumEventNotifier,
             @InOut(throwIfNull = true, out = Output.OPTIONAL) InOutPrm<Integer> attempt,
             @InRetOrException ReturnValueOrException<Void> retValOrExc,
-            @StepRef(desc = "If merge process started successfully,\n" +
+            @StepRef(note = "If merge process started successfully,\n" +
                     "we proceed to read its STDOUT/ERR")
                 Transition READ_PROCESS_OUTPUT,
-            @StepRef(desc = "If exception was encountered while starting\n" +
+            @StepRef(note = "If exception was encountered while starting\n" +
                     "merge process, we retry up to 3 times")
                 Transition LAUNCH_PROCESS,
-            @Terminal(desc = "If max retries was exceeded,\n" +
+            @Terminal(note = "If max retries was exceeded,\n" +
                     "we terminate the flow")
                 Transition END
     ) {
@@ -257,10 +256,10 @@ public class MergeChunkSubRangeFlow {
             @In StringBuilder stdoutOutput,
             @In StringBuilder stderrOutput,
 
-            @StepRef(desc = "While the process is alive,\n" +
+            @StepRef(note = "While the process is alive,\n" +
                     "we keep reading its STDOUT/ERR")
                 Transition READ_PROCESS_OUTPUT,
-            @StepRef(desc = "If process terminated,\n" +
+            @StepRef(note = "If process terminated,\n" +
                     "we proceed to parse the collected output")
                 Transition PARSE_OUTPUT
     ) throws IOException {
@@ -287,7 +286,7 @@ public class MergeChunkSubRangeFlow {
             @In LocalDateTime endOfRange,
             @In HeliumEventNotifier heliumEventNotifier,
 
-            @StepRef(desc = "If the merge process finished successfully,\n" +
+            @StepRef(note = "If the merge process finished successfully,\n" +
                     "run pos-merge checks")
                 Transition POST_MERGE_DURATION_CHECK
     ) {
@@ -319,11 +318,11 @@ public class MergeChunkSubRangeFlow {
             @In LocalDateTime endOfRange,
             @In HeliumEventNotifier heliumEventNotifier,
 
-            @FlowFactory(desc = "Run `GetDuration` operation\n"+
+            @FlowFactory(note = "Run `GetDuration` operation\n"+
                     "for a video in a child Flow")
                 FlowFactoryPrm<LoadVideoDurationFlow> loadVideoDurationFlowFactory,
 
-            @StepRef(desc = "After duration check, check that both\n" +
+            @StepRef(note = "After duration check, check that both\n" +
                             "audio and video channels are present")
                 Transition POST_MERGE_AUDIO_VIDEO_INTEGRITY_CHECK
     ) {
@@ -377,7 +376,7 @@ public class MergeChunkSubRangeFlow {
             @In LocalDateTime endOfRange,
             @In HeliumEventNotifier heliumEventNotifier,
 
-            @FlowFactory(desc = "Run `GetChannels` operation\n" +
+            @FlowFactory(note = "Run `GetChannels` operation\n" +
                     "for a video in a child Flow")
                 FlowFactoryPrm<LoadMediaChannelsFlow> loadMediaChannelsFlowFactory,
 
