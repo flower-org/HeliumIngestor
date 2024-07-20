@@ -5,10 +5,12 @@ import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
 import com.flower.anno.params.common.In;
 import com.flower.anno.params.step.FlowFactory;
+import com.flower.anno.params.step.FlowRepo;
 import com.flower.anno.params.transit.StepRef;
 import com.flower.anno.params.transit.Terminal;
 import com.flower.conf.FlowFactoryPrm;
 import com.flower.conf.FlowFuture;
+import com.flower.conf.FlowRepoPrm;
 import com.flower.conf.Transition;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -66,6 +68,7 @@ public class MainIngestorFlow {
     public static Transition LOAD_CAMERAS_FROM_CONFIG(
             @In Config config,
             @In Map<String, CommandAndSettings> cameraNameToCmdMap,
+            @FlowRepo FlowRepoPrm repo,
             @StepRef Transition RUN_CHILD_FLOWS) throws URISyntaxException {
         for (Config.Camera camera : config.cameras()) {
             String rtspUrlNoCreds = camera.rtspUrl();
