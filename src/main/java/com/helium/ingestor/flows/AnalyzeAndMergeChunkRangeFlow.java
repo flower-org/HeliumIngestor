@@ -1,9 +1,13 @@
 package com.helium.ingestor.flows;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Throwables.getStackTraceAsString;
 import static com.helium.ingestor.HeliumIngestorService.HELIUM_INGESTOR;
-import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.*;
+import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.getChunkDateTime;
+import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.getChunkUnixTime;
+import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.toUnixTime;
 import static com.helium.ingestor.flows.MergeChunkSubRangeFlow.getRenameFileName;
+import static com.helium.ingestor.flows.MergeChunkSubRangeFlow.sendDurationMismatchVideoChunksEvent;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkInfo;
 import static com.helium.ingestor.flows.VideoChunkManagerFlow.ChunkState;
 
@@ -13,12 +17,14 @@ import com.flower.anno.flow.State;
 import com.flower.anno.functions.SimpleStepFunction;
 import com.flower.anno.params.common.In;
 import com.flower.anno.params.common.InOut;
+import com.flower.anno.params.common.Out;
 import com.flower.anno.params.step.FlowFactory;
 import com.flower.anno.params.transit.StepRef;
 import com.flower.anno.params.transit.Terminal;
 import com.flower.conf.FlowFactoryPrm;
 import com.flower.conf.FlowFuture;
 import com.flower.conf.InOutPrm;
+import com.flower.conf.OutPrm;
 import com.flower.conf.Transition;
 import com.flower.utilities.FuturesTool;
 import com.google.common.util.concurrent.Futures;
@@ -68,6 +74,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
         final List<ChunkInfo> chunkRange;
         final LocalDateTime endOfRange;
         @Nullable File outputFile;
+        boolean noAudio = false;
         boolean retainChunks = false;
 
         ChunkRangeInfo(List<ChunkInfo> chunkRange, LocalDateTime endOfRange) {
@@ -90,7 +97,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
     @State final List<ChunkRangeInfo> chunksContiguousRanges;
     @State final Set<ChunkInfo> badChunks;
 
-    @State @Nullable int currentMergeIndex;
+    @State @Nullable int currentRangeIndex;
 
     public AnalyzeAndMergeChunkRangeFlow(String cameraName,
                                          boolean cameraHasAudio,
@@ -111,7 +118,7 @@ public class AnalyzeAndMergeChunkRangeFlow {
         this.nextHourChunk = nextHourChunk;
         this.chunksContiguousRanges = new ArrayList<>();
         this.badChunks = new HashSet<>();
-        this.currentMergeIndex = 0;
+        this.currentRangeIndex = 0;
         this.cameraHasAudio = cameraHasAudio;
         this.cameraHasVideo = cameraHasVideo;
     }
@@ -125,7 +132,8 @@ public class AnalyzeAndMergeChunkRangeFlow {
                                              @In List<ChunkInfo> chunksToMerge,
                                              @In Set<ChunkInfo> badChunks,
                                              @In HeliumEventNotifier heliumEventNotifier,
-                                             @StepRef Transition CONTINUITY_CHECK) {
+                                             @Out OutPrm<Integer> currentRangeIndex,
+                                             @StepRef Transition CHECK_CONTINUITY_AND_FORM_RANGES) {
         for (ChunkInfo chunkInfo : chunksToMerge) {
             if (chunkInfo.chunkState == ChunkState.DURATION_LOADED) {
                 File chunkFile = chunkInfo.chunkFile;
@@ -157,106 +165,38 @@ public class AnalyzeAndMergeChunkRangeFlow {
                 badChunks.add(chunkInfo);
             }
         }
-        return CONTINUITY_CHECK;
+        currentRangeIndex.setOutValue(0);
+        return CHECK_CONTINUITY_AND_FORM_RANGES;
     }
 
     @SimpleStepFunction
-    public static Transition CONTINUITY_CHECK(@In String cameraName,
+    public static ListenableFuture<Transition> CHECK_CONTINUITY_AND_FORM_RANGES(@In String cameraName,
                                               @In List<ChunkInfo> chunksToMerge,
                                               @In ChunkInfo nextHourChunk,
                                               @In Set<ChunkInfo> badChunks,
                                               @In List<ChunkRangeInfo> chunksContiguousRanges,
                                               @In HeliumEventNotifier heliumEventNotifier,
-                                              @StepRef(note = "If contiguous duration ranges were determined successfully,\n" +
-                                                              "validate audio continuity for those ranges next")
-                                                  Transition AUDIO_CONTINUITY_CHECK,
+                                              @In boolean cameraHasAudio,
+
+                                              @FlowFactory FlowFactoryPrm<FormChunkRangesFlow> flowFactoryPrm,
+
+                                              @StepRef Transition LAUNCH_MERGE_PROCESSES,
                                               @StepRef(note = "If there are no ranges of valid chunks to merge,\n" +
                                                               "go directly to zipping bad chunks step")
                                                   Transition ZIP_BAD_CHUNKS) {
-    List<ChunkInfo> currentRange = null;
-    LocalDateTime currentRangeWm = null;
-    Duration actualRangeDuration = null;
+    FormChunkRangesFlow flow = new FormChunkRangesFlow(cameraName, cameraHasAudio, chunksToMerge, nextHourChunk, badChunks,
+            chunksContiguousRanges, heliumEventNotifier);
+    FlowFuture<FormChunkRangesFlow> flowFuture = flowFactoryPrm.runChildFlow(flow);
 
-    for (ChunkInfo chunkInfo : chunksToMerge) {
-      if (!badChunks.contains(chunkInfo)) {
-          Duration chunkDuration = secondsAsDoubleToDuration(checkNotNull(chunkInfo.chunkDuration));
-          if (currentRange == null) {
-              //Initialize the first range
-              currentRange = new ArrayList<>();
-              currentRange.add(chunkInfo);
-              currentRangeWm = getChunkDateTime(chunkInfo.chunkFile.getName()).plus(chunkDuration);
-              actualRangeDuration = chunkDuration;
-          } else {
-              LocalDateTime chunkStart = getChunkDateTime(chunkInfo.chunkFile.getName());
-              Duration distance = Duration.between(currentRangeWm, chunkStart);
-              if (distance.toMillis() >= GAP_IN_FOOTAGE_SIZE_MS) {
-                  // Gap inside the merge range found. Reporting event: GAP_IN_FOOTAGE
-                  notifyGapAndSurplusReport(cameraName, currentRange, chunkInfo, checkNotNull(currentRangeWm),
-                          distance, heliumEventNotifier, checkNotNull(actualRangeDuration));
-
-                  // Add previous range to ranges
-                  chunksContiguousRanges.add(new ChunkRangeInfo(currentRange, currentRangeWm));
-
-                  // Start New range
-                  currentRange = new ArrayList<>();
-                  currentRange.add(chunkInfo);
-                  currentRangeWm = getChunkDateTime(chunkInfo.chunkFile.getName()).plus(chunkDuration);
-                  actualRangeDuration = chunkDuration;
-              } else {
-                  currentRange.add(chunkInfo);
-                  currentRangeWm = getChunkDateTime(chunkInfo.chunkFile.getName()).plus(chunkDuration);
-                  actualRangeDuration = checkNotNull(actualRangeDuration).plus(chunkDuration);
-              }
-          }
-      }
-    }
-
-    if (currentRange != null) {
-        // Determine if there is a gap between the last range and next hour, and report if found
-        LocalDateTime nextHourChunkStart = getChunkDateTime(nextHourChunk.chunkFile.getName());
-        Duration distance = Duration.between(checkNotNull(currentRangeWm), nextHourChunkStart);
-        if (distance.toMillis() >= GAP_IN_FOOTAGE_SIZE_MS) {
-            // Gap inside the merge range found. Reporting event: GAP_IN_FOOTAGE
-            notifyGapAndSurplusReport(cameraName, currentRange, nextHourChunk, currentRangeWm, distance, heliumEventNotifier, checkNotNull(actualRangeDuration));
-        } else {
-            Duration rangeDuration = getRangeDuration(currentRange, nextHourChunk);
-            notifySurplusReport(cameraName, currentRange, nextHourChunk, heliumEventNotifier, rangeDuration, checkNotNull(actualRangeDuration));
-        }
-
-        // Add last range to ranges
-        chunksContiguousRanges.add(new ChunkRangeInfo(currentRange, currentRangeWm));
-
-        return AUDIO_CONTINUITY_CHECK;
-    } else {
-        return ZIP_BAD_CHUNKS;
-    }
-  }
-
-  @SimpleStepFunction
-  public static Transition AUDIO_CONTINUITY_CHECK(@StepRef Transition LAUNCH_MERGE_PROCESSES) {
-/*
-TODO:
-    Test chunks for audio or no audio
-    No audio head goes to no audio range, since 1st chunk should be with audio for merged to have audio
-    Update ranges if first chunk detected as no audio
-
-    SHOW STREAMS:
-    ======================================
-    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_33.mp4
-    0|video
-
-    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_34.mp4
-    0|video
-
-    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_36.mp4
-    0|video
-    1|audio
-    ======================================
-*/
-
-//      TODO: here implement no audio chunk isolation
-
-      return LAUNCH_MERGE_PROCESSES;
+    return Futures.transform(flowFuture.getFuture(),
+            flowResult -> {
+                if (flow.chunksContiguousRanges == null || flow.chunksContiguousRanges.isEmpty()) {
+                    return ZIP_BAD_CHUNKS;
+                } else {
+                    return LAUNCH_MERGE_PROCESSES;
+                }
+            },
+            MoreExecutors.directExecutor());
   }
 
   @SimpleStepFunction
@@ -267,7 +207,7 @@ TODO:
                                                                    @In List<ChunkRangeInfo> chunksContiguousRanges,
                                                                    @In List<ChunkInfo> chunksToMerge,
                                                                    @In Set<ChunkInfo> badChunks,
-                                                                   @InOut(throwIfNull=true) InOutPrm<Integer> currentMergeIndex,
+                                                                   @InOut(throwIfNull=true) InOutPrm<Integer> currentRangeIndex,
                                                                    @FlowFactory(note = "Run merge operation for a range in a child Flow")
                                                                       FlowFactoryPrm<MergeChunkSubRangeFlow> flowFactory,
                                                                    @In File outputFolder,
@@ -281,7 +221,7 @@ TODO:
                                                                    @StepRef(note = "Once all ranges are merged,\n" +
                                                                                    "we proceed to zip bad chunks")
                                                                       Transition ZIP_BAD_CHUNKS) {
-    int mergeIndex = currentMergeIndex.getInValue();
+    int mergeIndex = currentRangeIndex.getInValue();
     if (mergeIndex < chunksContiguousRanges.size()) {
         ChunkRangeInfo chunkRangeInfo = checkNotNull(chunksContiguousRanges.get(mergeIndex));
         MergeChunkSubRangeFlow mergeChunkSubRangeFlow = new MergeChunkSubRangeFlow(cameraName,
@@ -299,7 +239,8 @@ TODO:
                         throw new RuntimeException(stderr);
                     }
 
-                    currentMergeIndex.setOutValue(mergeIndex + 1);
+                    currentRangeIndex.setOutValue(mergeIndex + 1);
+                    tryToReportDurationMismatchEvent(mergeChunkSubRangeFlow, cameraName, heliumEventNotifier, chunkRangeInfo);
                     return Futures.immediateFuture(LAUNCH_MERGE_PROCESSES);
                 },
                 Exception.class,
@@ -326,7 +267,7 @@ TODO:
                                             );
 
                                             chunksContiguousRanges.clear();
-                                            currentMergeIndex.setOutValue(0);
+                                            currentRangeIndex.setOutValue(0);
                                             return Futures.immediateFuture(INTEGRITY_CHECK);
                                         }
                                     }
@@ -335,6 +276,9 @@ TODO:
                         } catch (Exception e1) {
                             LOGGER.error("Error trying to repair merge failure", e1);
                         }
+
+                        // If we failed to repair, report duration mismatch, if any
+                        tryToReportDurationMismatchEvent(mergeChunkSubRangeFlow, cameraName, heliumEventNotifier, chunkRangeInfo);
                         return Futures.immediateFailedFuture(e);
                     } else {
                         return Futures.immediateFailedFuture(e);
@@ -342,7 +286,7 @@ TODO:
                 },
                 MoreExecutors.directExecutor());
     } else {
-        currentMergeIndex.setOutValue(mergeIndex);
+        currentRangeIndex.setOutValue(mergeIndex);
         return Futures.immediateFuture(ZIP_BAD_CHUNKS);
     }
   }
@@ -431,6 +375,34 @@ TODO:
 
     // ----------------------------------------------------------------------------
 
+    static void tryToReportDurationMismatchEvent(MergeChunkSubRangeFlow mergeChunkSubRangeFlow, String cameraName,
+                                                 HeliumEventNotifier heliumEventNotifier, ChunkRangeInfo chunkRangeInfo) {
+        // Report duration discrepancy here, moved from `MergeChunkSubRangeFlow`
+        // we don't want to report if
+        if (mergeChunkSubRangeFlow.durationCheckInfo != null) {
+            if (mergeChunkSubRangeFlow.durationCheckInfo.durationException != null) {
+                Throwable e = mergeChunkSubRangeFlow.durationCheckInfo.durationException;
+                String error = getStackTraceAsString(e);
+                sendDurationMismatchVideoChunksEvent(cameraName, mergeChunkSubRangeFlow.endOfRange, heliumEventNotifier, error);
+                chunkRangeInfo.retainChunks = true;
+            } else {
+                long rangeDurationMillis = mergeChunkSubRangeFlow.durationCheckInfo.rangeDurationMillis;
+                long videoDurationMillis = mergeChunkSubRangeFlow.durationCheckInfo.videoDurationMillis;
+                if (Math.abs(rangeDurationMillis - videoDurationMillis) >= GAP_IN_FOOTAGE_SIZE_MS) {
+                    String error = String.format("Range: %s. Duration discrepancy: Range duration ms: %d; Video duration ms: %d",
+                            mergeChunkSubRangeFlow.outputFile == null ? "null" : mergeChunkSubRangeFlow.outputFile.getName(),
+                            rangeDurationMillis, videoDurationMillis);
+                    if (rangeDurationMillis - videoDurationMillis >= GAP_IN_FOOTAGE_SIZE_MS) {
+                        sendDurationMismatchVideoChunksEvent(cameraName, mergeChunkSubRangeFlow.endOfRange, heliumEventNotifier, error);
+                        chunkRangeInfo.retainChunks = true;
+                    } else {
+                        LOGGER.warn("Footage surplus: {} {}", cameraName, error);
+                    }
+                }
+            }
+        }
+    }
+
     static void notifyGapAndSurplusReport(
             String cameraName,
             List<ChunkInfo> currentRange,
@@ -470,12 +442,20 @@ TODO:
             String eventTitle = String.format("Merged video starting from [%s] to [%s] shows extra footage duration of [%d] ms.",
                     currentRange.get(0).chunkFile.getName(), firstChunkOfTheNextRange.chunkFile.getName(), durationGap.toMillis());
             StringBuilder chunkDurationsReport = new StringBuilder();
-            currentRange.forEach(chunk -> {
+            /* TODO: Reporting all chunks filenames is an overkill. Remove this comment if not needed after a while.
+                currentRange.forEach(chunk -> {
                 if (!chunkDurationsReport.isEmpty()) {
                     chunkDurationsReport.append(" | ");
                 }
                 chunkDurationsReport.append(String.format("%s [%s]", chunk.chunkFile.getName(), chunk.chunkDuration));
-            });
+            });*/
+            if (!currentRange.isEmpty()) {
+                ChunkInfo firstChunk = currentRange.get(0);
+                ChunkInfo lastChunk = currentRange.get(currentRange.size() - 1);
+                chunkDurationsReport.append(String.format("%s [%s]", firstChunk.chunkFile.getName(), firstChunk.chunkDuration));
+                chunkDurationsReport.append(" -> ");
+                chunkDurationsReport.append(String.format("%s [%s]", lastChunk.chunkFile.getName(), lastChunk.chunkDuration));
+            }
             String eventDetails = String.format("%s RangeDuration [%s] ActualDuration [%s]%nDurations: [%s]",
                     eventTitle, rangeDuration, actualDuration, chunkDurationsReport);
             long chunkUnixTime = getChunkUnixTime(firstChunkOfTheNextRange.chunkFile.getName());

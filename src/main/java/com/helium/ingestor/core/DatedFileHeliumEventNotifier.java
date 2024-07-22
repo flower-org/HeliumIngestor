@@ -41,11 +41,11 @@ public class DatedFileHeliumEventNotifier implements HeliumEventNotifier {
         LocalDateTime eventReportDateTime = Instant.ofEpochMilli(eventReportTime).atZone(ZoneId.systemDefault()).toLocalDateTime();
 
         if (startEventDateTimeStr.equals(endEventDateTimeStr)) {
-            return String.format("Camera [%s]: [%s]. Time: [%s]; Report time: [%s]; Reporter: [%s]; [%s]:\n\t%s",
-                    cameraName, eventType, startEventDateTimeStr, eventReportDateTime, eventReporter, eventTitle, eventDetails);
+            return String.format("[%s]. Camera [%s] Time: [%s]; Report time: [%s]; Reporter: [%s]; [%s]:\n\t%s",
+                    eventType, cameraName, startEventDateTimeStr, eventReportDateTime, eventReporter, eventTitle, eventDetails);
         } else {
-            return String.format("Camera [%s]: [%s]. From: [%s]-[%s]; Report time: [%s]; Reporter: [%s]; [%s]:\n\t%s",
-                    cameraName, eventType, startEventDateTimeStr, endEventDateTimeStr, eventReportDateTime, eventReporter, eventTitle, eventDetails);
+            return String.format("[%s]. Camera [%s] From: [%s]-[%s]; Report time: [%s]; Reporter: [%s]; [%s]:\n\t%s",
+                    eventType, cameraName, startEventDateTimeStr, endEventDateTimeStr, eventReportDateTime, eventReporter, eventTitle, eventDetails);
         }
     }
 

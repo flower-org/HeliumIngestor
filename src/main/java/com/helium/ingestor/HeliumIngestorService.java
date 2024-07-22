@@ -38,6 +38,7 @@ public class HeliumIngestorService {
         flower.registerFlow(MergeChunkSubRangeFlow.class);
         flower.registerFlow(LoadVideoDurationFlow.class);
         flower.registerFlow(LoadMediaChannelsFlow.class);
+        flower.registerFlow(FormChunkRangesFlow.class);
 
         flower.registerEventProfile(FlowTerminationEvent.class, true);
         flower.registerEventProfile(FlowExceptionEvent.class, true);

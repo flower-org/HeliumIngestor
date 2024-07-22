@@ -2,7 +2,6 @@ package com.helium.ingestor.flows;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Throwables.getStackTraceAsString;
-import static com.helium.ingestor.flows.AnalyzeAndMergeChunkRangeFlow.GAP_IN_FOOTAGE_SIZE_MS;
 import static com.helium.ingestor.flows.AnalyzeAndMergeChunkRangeFlow.secondsAsDoubleToDuration;
 import static com.helium.ingestor.flows.CameraProcessRunnerFlow.readString;
 import static com.helium.ingestor.flows.LoadChunkVideoDurationFlow.getChunkDateTime;
@@ -74,6 +73,24 @@ public class MergeChunkSubRangeFlow {
 
     final static Integer MAX_RETRIES = 3;
 
+    public static class DurationCheckInfo {
+        final long rangeDurationMillis;
+        final long videoDurationMillis;
+        @Nullable final Throwable durationException;
+
+        public DurationCheckInfo(Throwable durationException) {
+            this.rangeDurationMillis = -1L;
+            this.videoDurationMillis = -1L;
+            this.durationException = durationException;
+        }
+
+        public DurationCheckInfo(long rangeDurationMillis, long videoDurationMillis) {
+            this.rangeDurationMillis = rangeDurationMillis;
+            this.videoDurationMillis = videoDurationMillis;
+            this.durationException = null;
+        }
+    }
+
     @State final ChunkRangeInfo chunkRangeInfo;
     @State final String cameraName;
     @State final boolean cameraHasAudio;
@@ -97,6 +114,8 @@ public class MergeChunkSubRangeFlow {
     @State @Nullable BufferedReader stdout;
     @State @Nullable BufferedReader stderr;
     @State int attempt = 1;
+
+    @State @Nullable DurationCheckInfo durationCheckInfo = null;
 
     static String formChunkFileContent(List<ChunkInfo> chunksToMerge) {
         StringBuilder chunksFileContent = new StringBuilder();
@@ -318,6 +337,8 @@ public class MergeChunkSubRangeFlow {
             @In LocalDateTime endOfRange,
             @In HeliumEventNotifier heliumEventNotifier,
 
+            @Out OutPrm<DurationCheckInfo> durationCheckInfo,
+
             @FlowFactory(note = "Run `GetDuration` operation\n"+
                     "for a video in a child Flow")
                 FlowFactoryPrm<LoadVideoDurationFlow> loadVideoDurationFlowFactory,
@@ -327,7 +348,7 @@ public class MergeChunkSubRangeFlow {
                 Transition POST_MERGE_AUDIO_VIDEO_INTEGRITY_CHECK
     ) {
         LoadVideoDurationFlow loadVideoDurationFlow =
-                new LoadVideoDurationFlow(cameraName, outputFile.getAbsolutePath(), heliumEventNotifier);
+                new LoadVideoDurationFlow(cameraName, outputFile, heliumEventNotifier);
         FlowFuture<LoadVideoDurationFlow> flowFuture = loadVideoDurationFlowFactory.runChildFlow(loadVideoDurationFlow);
 
         return FuturesTool.tryCatch(flowFuture.getFuture(),
@@ -338,32 +359,18 @@ public class MergeChunkSubRangeFlow {
                         Duration distance = Duration.between(startTime, endTime);
                         long rangeDurationMillis = distance.toMillis();
                         long videoDurationMillis = secondsAsDoubleToDuration(checkNotNull(flow.durationSeconds)).toMillis();
-                        if (Math.abs(rangeDurationMillis - videoDurationMillis) >= GAP_IN_FOOTAGE_SIZE_MS) {
-                            String error = String.format("Range: %s. Duration discrepancy: Range duration ms: %d; Video duration ms: %d",
-                                    outputFile.getName(), rangeDurationMillis, videoDurationMillis);
-                            if (rangeDurationMillis - videoDurationMillis >= GAP_IN_FOOTAGE_SIZE_MS) {
-                                sendDurationCheckVideoChunksEvent(cameraName, endOfRange, heliumEventNotifier, error);
-                                chunkRangeInfo.retainChunks = true;
-                            } else {
-                                LOGGER.warn("Footage surplus: {} {}", cameraName, error);
-                            }
-                        }
+                        durationCheckInfo.setOutValue(new DurationCheckInfo(rangeDurationMillis, videoDurationMillis));
                     } else {
-                        String error = getStackTraceAsString(flow.durationException);
-                        sendDurationCheckVideoChunksEvent(cameraName, endOfRange, heliumEventNotifier, error);
-                        chunkRangeInfo.retainChunks = true;
+                        durationCheckInfo.setOutValue(new DurationCheckInfo(flow.durationException));
                     }
                     return POST_MERGE_AUDIO_VIDEO_INTEGRITY_CHECK;
                 },
                 Exception.class,
                 e -> {
-                    String error = getStackTraceAsString(e);
-                    sendDurationCheckVideoChunksEvent(cameraName, endOfRange, heliumEventNotifier, error);
-                    chunkRangeInfo.retainChunks = true;
+                    durationCheckInfo.setOutValue(new DurationCheckInfo(e));
                     return POST_MERGE_AUDIO_VIDEO_INTEGRITY_CHECK;
                 },
                 MoreExecutors.directExecutor());
-
     }
 
     @SimpleStepFunction
@@ -383,7 +390,7 @@ public class MergeChunkSubRangeFlow {
             @Terminal Transition END
     ) {
         LoadMediaChannelsFlow loadMediaChannelsFlow =
-                new LoadMediaChannelsFlow(cameraName, outputFile.getAbsolutePath(), heliumEventNotifier);
+                new LoadMediaChannelsFlow(cameraName, outputFile, heliumEventNotifier);
         FlowFuture<LoadMediaChannelsFlow> flowFuture = loadMediaChannelsFlowFactory.runChildFlow(loadMediaChannelsFlow);
 
         return FuturesTool.tryCatch(flowFuture.getFuture(),
@@ -480,7 +487,7 @@ public class MergeChunkSubRangeFlow {
         }
     }
 
-    static void sendDurationCheckVideoChunksEvent(
+    static void sendDurationMismatchVideoChunksEvent(
             String cameraName,
             LocalDateTime endOfRange,
             HeliumEventNotifier heliumEventNotifier,

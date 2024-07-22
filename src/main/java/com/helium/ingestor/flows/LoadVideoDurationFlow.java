@@ -24,6 +24,7 @@ import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
 import com.helium.ingestor.flows.events.FlowTerminationEvent;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.Duration;
@@ -59,9 +60,9 @@ public class LoadVideoDurationFlow {
     @State @Nullable Double durationSeconds;
     @State @Nullable Throwable durationException;
 
-    public LoadVideoDurationFlow(String cameraName, String videoChunkFileName, HeliumEventNotifier heliumEventNotifier) {
+    public LoadVideoDurationFlow(String cameraName, File videoChunkFile, HeliumEventNotifier heliumEventNotifier) {
         this.cameraName = cameraName;
-        this.videoChunkFileName = videoChunkFileName;
+        this.videoChunkFileName = videoChunkFile.getAbsolutePath();
         this.command = String.format(CMD, videoChunkFileName);
         this.heliumEventNotifier = heliumEventNotifier;
         this.stdoutOutput = new StringBuilder();

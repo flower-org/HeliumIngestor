@@ -3,6 +3,7 @@ package com.flower.flows;
 import com.flower.engine.Flower;
 import com.helium.ingestor.flows.AnalyzeAndMergeChunkRangeFlow;
 import com.helium.ingestor.flows.CameraProcessRunnerFlow;
+import com.helium.ingestor.flows.FormChunkRangesFlow;
 import com.helium.ingestor.flows.LoadChunkVideoDurationFlow;
 import com.helium.ingestor.flows.LoadMediaChannelsFlow;
 import com.helium.ingestor.flows.LoadVideoDurationFlow;
@@ -23,6 +24,7 @@ public class DiagramsMermaidOutputTest {
         flower.registerFlow(MergeChunkSubRangeFlow.class);
         flower.registerFlow(LoadVideoDurationFlow.class);
         flower.registerFlow(LoadMediaChannelsFlow.class);
+        flower.registerFlow(FormChunkRangesFlow.class);
         flower.initialize();
 
         outputDiagram(flower, MainIngestorFlow.class);
@@ -33,9 +35,10 @@ public class DiagramsMermaidOutputTest {
         outputDiagram(flower, MergeChunkSubRangeFlow.class);
         outputDiagram(flower, LoadVideoDurationFlow.class);
         outputDiagram(flower, LoadMediaChannelsFlow.class);
+        outputDiagram(flower, FormChunkRangesFlow.class);
     }
 
     static <T> void outputDiagram(Flower flower, Class<T> clz) {
-        System.out.println(flower.getFlowExec(clz).buildMermaidGraph());
+        System.out.println(flower.getFlowExec(clz).buildMermaidGraph(true));
     }
 }

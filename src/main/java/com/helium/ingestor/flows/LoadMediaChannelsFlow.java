@@ -24,6 +24,7 @@ import com.helium.ingestor.core.HeliumEventNotifier;
 import com.helium.ingestor.core.HeliumEventType;
 import com.helium.ingestor.flows.events.FlowTerminationEvent;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.Duration;
@@ -37,6 +38,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 // TODO: DRY With LoadVideoDurationFlow, MergeChunkSubRangeFlow
+/*
+    SHOW STREAMS:
+    ======================================
+    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_33.mp4
+    0|video
+
+    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_34.mp4
+    0|video
+
+    ffprobe -v error -show_entries stream=index:stream=codec_type -of compact=p=0:nk=1 /home/john/cam/camera_20/video_2024-07-16_19_00_36.mp4
+    0|video
+    1|audio
+    ======================================
+*/
 @FlowType(firstStep = "LAUNCH_PROCESS")
 @DisableEventProfiles({FlowTerminationEvent.class})
 public class LoadMediaChannelsFlow {
@@ -62,9 +77,9 @@ public class LoadMediaChannelsFlow {
     @State boolean hasVideo;
     @State @Nullable Throwable channelsException;
 
-    public LoadMediaChannelsFlow(String cameraName, String videoChunkFileName, HeliumEventNotifier heliumEventNotifier) {
+    public LoadMediaChannelsFlow(String cameraName, File videoChunkFile, HeliumEventNotifier heliumEventNotifier) {
         this.cameraName = cameraName;
-        this.videoChunkFileName = videoChunkFileName;
+        this.videoChunkFileName = videoChunkFile.getAbsolutePath();
         this.command = String.format(CMD, videoChunkFileName);
         this.heliumEventNotifier = heliumEventNotifier;
         this.stdoutOutput = new StringBuilder();
