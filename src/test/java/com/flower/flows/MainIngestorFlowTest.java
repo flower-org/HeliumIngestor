@@ -35,7 +35,8 @@ public class MainIngestorFlowTest {
         System.out.println(configStr);
         Config config = mapper.readValue(configStr, Config.class);
 
-        if (config.cameras() == null || config.cameras().isEmpty()) {
+        if ((config.rtspCameras() == null || config.rtspCameras().isEmpty())
+                && (config.commandCameras() == null || config.commandCameras().isEmpty())) {
             throw new IllegalArgumentException("Cameras not set");
         }
 

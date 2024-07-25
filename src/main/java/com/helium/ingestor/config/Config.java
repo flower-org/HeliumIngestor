@@ -26,20 +26,9 @@ public interface Config {
         String password();
     }
 
-    /** RTSP camera */
-    @Value.Immutable
-    @JsonSerialize(as = ImmutableCamera.class)
-    @JsonDeserialize(as = ImmutableCamera.class)
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     interface Camera {
         @JsonProperty
         String name();
-        @JsonProperty
-        String rtspUrl();
-
-        @JsonProperty
-        @Nullable
-        Credentials credentials();
 
         @Value.Default
         @JsonProperty
@@ -54,11 +43,35 @@ public interface Config {
         default boolean hasAudio() { return true; }
     }
 
+    /** RTSP camera */
     @Value.Immutable
-    @JsonSerialize(as = ImmutableVideoService.class)
-    @JsonDeserialize(as = ImmutableVideoService.class)
+    @JsonSerialize(as = ImmutableRtspCamera.class)
+    @JsonDeserialize(as = ImmutableRtspCamera.class)
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    interface VideoService {
+    interface RtspCamera extends Camera {
+        @JsonProperty
+        String rtspUrl();
+
+        @JsonProperty
+        @Nullable
+        Credentials credentials();
+    }
+
+    /** Camera defined directly by ffmpeg command */
+    @Value.Immutable
+    @JsonSerialize(as = ImmutableCommandCamera.class)
+    @JsonDeserialize(as = ImmutableCommandCamera.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    interface CommandCamera extends Camera {
+        @JsonProperty
+        String commandPrefix();
+    }
+
+    @Value.Immutable
+    @JsonSerialize(as = ImmutableVideoFileService.class)
+    @JsonDeserialize(as = ImmutableVideoFileService.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    interface VideoFileService {
         //TODO: ssl parameters
 
         @JsonProperty
@@ -77,7 +90,10 @@ public interface Config {
     String videoFeedFolder();
 
     @JsonProperty
-    List<Camera> cameras();
+    List<RtspCamera> rtspCameras();
+
+    @JsonProperty
+    List<CommandCamera> commandCameras();
 
     /** ffmpeg's -timeout parameter (socket timeout in microseconds)
      * Default 1 second (1000000 us)*/
@@ -87,7 +103,7 @@ public interface Config {
 
     @JsonProperty
     @Nullable
-    VideoService videoService();
+    VideoFileService videoFileService();
 
     /** ffmpeg's -timeout parameter (socket timeout in microseconds)
      * Default 1 second (1000000 us)*/

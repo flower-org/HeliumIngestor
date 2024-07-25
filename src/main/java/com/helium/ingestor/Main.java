@@ -81,12 +81,12 @@ public class Main {
                 }
 
                 HttpStaticFileServer videoService = null;
-                if (config.videoService() != null) {
-                    int videoServicePort = config.videoService().port();
+                if (config.videoFileService() != null) {
+                    int videoServicePort = config.videoFileService().port();
                     LOGGER.info("Starting VideoService on port {}", videoServicePort);
                     videoService = new HttpStaticFileServer();
                     videoService.startServer(videoFolder, false, videoServicePort,
-                                             config.videoService().credentials());
+                                             config.videoFileService().credentials());
                 }
 
                 //This will block

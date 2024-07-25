@@ -18,7 +18,8 @@ public class HeliumIngestorService {
     public static final String HELIUM_INGESTOR = "HeliumIngestor";
 
     public static void run(Config config) throws ExecutionException, InterruptedException {
-        if (config.cameras() == null || config.cameras().isEmpty()) {
+        if ((config.rtspCameras() == null || config.rtspCameras().isEmpty())
+            && (config.commandCameras() == null || config.commandCameras().isEmpty())) {
             throw new IllegalArgumentException("Cameras not set");
         }
 

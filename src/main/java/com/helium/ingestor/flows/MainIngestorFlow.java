@@ -17,6 +17,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import com.helium.ingestor.config.Config;
+import com.helium.ingestor.config.FfmpegCommandCreator;
 import com.helium.ingestor.core.HeliumEventNotifier;
 import java.io.File;
 import java.net.MalformedURLException;
@@ -25,18 +26,17 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @FlowType(firstStep = "LOAD_CAMERAS_FROM_CONFIG")
 public class MainIngestorFlow {
     final static Logger LOGGER = LoggerFactory.getLogger(MainIngestorFlow.class);
-
-    static final String FFMPEG_RTSP_CMD_PATTERN =
-            "ffmpeg -i %s -c copy -map 0 -timeout %d -segment_time 00:00:01" +
-            " -reset_timestamps 1 -strftime 1 -f segment %s/%s/video_%%Y-%%m-%%d_%%H_%%M_%%S.mp4";
 
     @State final Config config;
     @State final HeliumEventNotifier heliumEventNotifier;
@@ -69,28 +69,29 @@ public class MainIngestorFlow {
             @In Config config,
             @In Map<String, CommandAndSettings> cameraNameToCmdMap,
             @StepRef Transition RUN_CHILD_FLOWS) throws URISyntaxException {
-        for (Config.Camera camera : config.cameras()) {
-            String rtspUrlNoCreds = camera.rtspUrl();
-            URI url = new URI(rtspUrlNoCreds);
-            if (camera.credentials() != null) {
-                //Add RTSP credentials if specified
-                Config.Credentials creds = camera.credentials();
-                url = new URI(url.getScheme(),
-                        String.format("%s:%s", creds.username(), creds.password()),
-                        url.getHost(),
-                        url.getPort(),
-                        url.getPath(),
-                        url.getQuery(),
-                        url.getFragment());
+        Set<Config.Camera> allCameras = new HashSet<>();
+
+        if (config.rtspCameras() != null) {
+            for (Config.RtspCamera camera : config.rtspCameras()) {
+                allCameras.add(camera);
+                String ffmpegRtspCommand = FfmpegCommandCreator.createFfmpegCommand(camera, config.videoFeedFolder(),
+                        config.socketTimeout_us());
+                cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
+                        camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
             }
+        }
 
-            String ffmpegRtspCommand = String.format(FFMPEG_RTSP_CMD_PATTERN,
-                    url, config.socketTimeout_us(),
-                    config.videoFeedFolder(), camera.name());
+        if (config.commandCameras() != null) {
+            for (Config.CommandCamera camera : config.commandCameras()) {
+                allCameras.add(camera);
+                String ffmpegRtspCommand = FfmpegCommandCreator.createFfmpegCommand(camera, config.videoFeedFolder(),
+                        config.socketTimeout_us());
+                cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
+                        camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
+            }
+        }
 
-            cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
-                    camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
-
+        for (Config.Camera camera : allCameras) {
             //Create camera feed folder if not found
             File cameraFeedFolder = new File(config.videoFeedFolder() + File.separator + camera.name());
             if (!cameraFeedFolder.exists()) {
