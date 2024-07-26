@@ -7,6 +7,7 @@ import static com.helium.ingestor.config.Config.Camera;
 import static com.helium.ingestor.config.Config.Credentials;
 import static com.helium.ingestor.config.Config.RtspCamera;
 import static com.helium.ingestor.config.Config.CommandCamera;
+import static com.helium.ingestor.config.Config.RawCommandCamera;
 
 public class FfmpegCommandCreator {
     static final String FFMPEG_RTSP_CMD_PATTERN =
@@ -38,8 +39,11 @@ public class FfmpegCommandCreator {
 
             return String.format(FFMPEG_RTSP_CMD_PATTERN, url, socketTimeout_us, videoFeedFolder, camera.name());
         } else if (camera instanceof CommandCamera) {
-                CommandCamera commandCamera = (CommandCamera)camera;
+            CommandCamera commandCamera = (CommandCamera)camera;
             return String.format(FFMPEG_GENERIC_CMD_PATTERN, commandCamera.commandPrefix(), socketTimeout_us, videoFeedFolder, camera.name());
+        } else if (camera instanceof RawCommandCamera) {
+            RawCommandCamera rawCommandCamera = (RawCommandCamera)camera;
+            return rawCommandCamera.command();
         } else {
             throw new IllegalArgumentException("Unknown camera type:" + camera.getClass().getCanonicalName());
         }

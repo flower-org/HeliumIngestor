@@ -67,6 +67,16 @@ public interface Config {
         String commandPrefix();
     }
 
+    /** Camera defined directly by ffmpeg command */
+    @Value.Immutable
+    @JsonSerialize(as = ImmutableRawCommandCamera.class)
+    @JsonDeserialize(as = ImmutableRawCommandCamera.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    interface RawCommandCamera extends Camera {
+        @JsonProperty
+        String command();
+    }
+
     @Value.Immutable
     @JsonSerialize(as = ImmutableVideoFileService.class)
     @JsonDeserialize(as = ImmutableVideoFileService.class)
@@ -94,6 +104,9 @@ public interface Config {
 
     @JsonProperty
     List<CommandCamera> commandCameras();
+
+    @JsonProperty
+    List<RawCommandCamera> rawCommandCameras();
 
     /** ffmpeg's -timeout parameter (socket timeout in microseconds)
      * Default 1 second (1000000 us)*/

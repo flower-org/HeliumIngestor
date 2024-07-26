@@ -69,29 +69,19 @@ public class MainIngestorFlow {
             @In Config config,
             @In Map<String, CommandAndSettings> cameraNameToCmdMap,
             @StepRef Transition RUN_CHILD_FLOWS) throws URISyntaxException {
-        Set<Config.Camera> allCameras = new HashSet<>();
+        Set<Config.Camera> cameras = new HashSet<>();
 
-        if (config.rtspCameras() != null) {
-            for (Config.RtspCamera camera : config.rtspCameras()) {
-                allCameras.add(camera);
-                String ffmpegRtspCommand = FfmpegCommandCreator.createFfmpegCommand(camera, config.videoFeedFolder(),
-                        config.socketTimeout_us());
-                cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
-                        camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
-            }
-        }
+        if (config.rtspCameras() != null) { cameras.addAll(config.rtspCameras()); }
+        if (config.commandCameras() != null) { cameras.addAll(config.commandCameras()); }
+        if (config.rawCommandCameras() != null) { cameras.addAll(config.rawCommandCameras()); }
 
-        if (config.commandCameras() != null) {
-            for (Config.CommandCamera camera : config.commandCameras()) {
-                allCameras.add(camera);
-                String ffmpegRtspCommand = FfmpegCommandCreator.createFfmpegCommand(camera, config.videoFeedFolder(),
-                        config.socketTimeout_us());
-                cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
-                        camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
-            }
-        }
+        for (Config.Camera camera : cameras) {
+            // Add camera's rtsp command to map
+            String ffmpegRtspCommand = FfmpegCommandCreator.createFfmpegCommand(camera, config.videoFeedFolder(),
+                    config.socketTimeout_us());
+            cameraNameToCmdMap.put(camera.name(), new CommandAndSettings(ffmpegRtspCommand,
+                    camera.retainChunksForDebug(), camera.hasAudio(), camera.hasVideo()));
 
-        for (Config.Camera camera : allCameras) {
             //Create camera feed folder if not found
             File cameraFeedFolder = new File(config.videoFeedFolder() + File.separator + camera.name());
             if (!cameraFeedFolder.exists()) {
