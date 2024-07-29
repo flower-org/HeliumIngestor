@@ -1,6 +1,6 @@
 # How to create a CommandCamera for USB/webcam in Linux:
 
-Please note that in Windows/MacOs command is formed in a different way, please refer to [URL HERE].
+Please note that in Windows/MacOs command is formed in a different way, please refer here: https://trac.ffmpeg.org/wiki/Capture/Webcam.
 
 
 ## 1. Find your device descriptors in the system:
@@ -8,9 +8,11 @@ Please note that in Windows/MacOs command is formed in a different way, please r
 Find video devices (typically in /dev/video*):
 `ffmpeg -f v4l2 -list_formats all -i /dev/video0`
 
-Find audio devices:
-`alsamixer` - to set mic volume
-`apt install alsa-utils`
+Install audio utils:  
+`apt install alsa-utils`  
+`alsamixer` - to set mic volume  
+
+Find audio devices:  
 `arecord -L`
 
 
@@ -61,10 +63,12 @@ Inconvenient, use only if you really need to do something hacky.
 
 - Java Process API has huge problems running commands with special symbols, and I don't prioritize debugging this one either.  
 More specifically, if you use `Runtime.exec(...)` to run a command like the following, it will be malformed:  
-`ffmpeg -f alsa -i plughw:CARD=camera,DEV=0 -f v4l2 -i /dev/video0 -c:v libx264 -c:a aac -b:a 192k -preset fast -force_key_frames "expr:gte(t,n_forced*1)" -f segment -segment_time 00:00:01 -reset_timestamps 1 -strftime 1 -segment_format mp4 video_%Y-%m-%d_%H_%M_%S.mp4`
-because of the keyframe forcing part, that has symbols like `"`
-`"expr:gte(t,n_forced*1)"`  
-I'm not sure what the problem is, I tried some random symbol escaping and it didn't work.  
+E.g.
+`ffmpeg -f alsa -i plughw:CARD=camera,DEV=0 -f v4l2 -i /dev/video0 -c:v libx264 -c:a aac -b:a 192k -preset fast -force_key_frames "expr:gte(t,n_forced*1)" -f segment -segment_time 00:00:01 -reset_timestamps 1 -strftime 1 -segment_format mp4 video_%Y-%m-%d_%H_%M_%S.mp4`  
+<br/>
+That's because of the keyframe forcing part, that has symbols like `"`  
+More specifically, this part: `"expr:gte(t,n_forced*1)"`  
+<br/>
+I'm not sure what the actual problem is, I tried some symbol escaping, and it didn't work.  
 The command examples from (2) don't use such symbols and work fine for me.  
 Please be aware of this issue, because it's super unobvious and frustrating.
-
